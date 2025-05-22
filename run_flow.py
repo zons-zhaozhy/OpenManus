@@ -2,15 +2,18 @@ import asyncio
 import time
 
 from app.agent.manus import Manus
+from app.agent.data_analysis import DataAnalysis
 from app.flow.flow_factory import FlowFactory, FlowType
 from app.logger import logger
+from app.config import config
 
 
 async def run_flow():
     agents = {
         "manus": Manus(),
     }
-
+    if config.run_flow_config.use_data_analysis_agent:
+        agents["data_analysis"] = DataAnalysis()
     try:
         prompt = input("Enter your prompt: ")
 
