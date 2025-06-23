@@ -1055,16 +1055,35 @@ async def get_learning_statistics():
         return {"status": "error", "message": str(e)}
 
 
+# 简单的会话存储（实际项目中应使用Redis等）
+session_storage = {}
+
+
 @requirements_router.post("/clarify")
 async def clarify_requirement(request: ClarificationRequest) -> ClarificationResponse:
-    """澄清需求 - 集成目标导向评分"""
+    """澄清需求 - 多轮澄清与目标导向评分"""
     try:
         # 使用质量导向澄清引擎
         clarification_engine = QualityDrivenClarificationEngine()
 
+        # 获取或创建会话数据
+        session_data = session_storage.get(
+            request.session_id,
+            {"requirement_text": "", "clarification_history": [], "round_count": 0},
+        )
+
+        # 累积需求文本
+        if session_data["requirement_text"]:
+            session_data["requirement_text"] += f"\n{request.answer}"
+        else:
+            session_data["requirement_text"] = request.answer
+
+        # 记录当前轮次
+        session_data["round_count"] += 1
+
         # 分析当前需求质量
         quality_analysis = await clarification_engine.analyze_requirement_quality(
-            request.session_id, request.answer
+            session_data["requirement_text"], session_data["clarification_history"]
         )
 
         # 生成目标导向的澄清计划
@@ -1074,9 +1093,11 @@ async def clarify_requirement(request: ClarificationRequest) -> ClarificationRes
             )
         )
 
-        # 判断是否应该继续澄清（基于质量达标而非轮次）
+        # 判断是否应该继续澄清（基于质量达标和轮次限制）
         should_continue_result = (
-            await clarification_engine.should_continue_clarification(quality_analysis)
+            await clarification_engine.should_continue_clarification(
+                quality_analysis, session_data["round_count"]
+            )
         )
 
         # 处理返回值（可能是元组也可能是单个值）
@@ -1086,7 +1107,7 @@ async def clarify_requirement(request: ClarificationRequest) -> ClarificationRes
             should_continue = should_continue_result
             reason = "质量评估完成"
 
-        if should_continue:
+        if should_continue and session_data["round_count"] < 5:  # 最多5轮澄清
             # 生成下一轮澄清问题
             next_questions = (
                 await clarification_engine.generate_clarification_questions(
@@ -1094,10 +1115,36 @@ async def clarify_requirement(request: ClarificationRequest) -> ClarificationRes
                 )
             )
 
+            # 安全提取问题文本
+            def extract_question_text(q):
+                if isinstance(q, dict):
+                    return q.get("question", str(q))
+                elif isinstance(q, str):
+                    return q
+                else:
+                    return str(q)
+
+            question_texts = [extract_question_text(q) for q in next_questions]
+
+            # 记录本轮澄清
+            current_round = {
+                "round": session_data["round_count"],
+                "questions": question_texts,
+                "timestamp": time.time(),
+            }
+            session_data["clarification_history"].append(current_round)
+
+            # 更新会话存储
+            session_storage[request.session_id] = session_data
+
             # 计算目标导向评分（使用修正的算法）
-            clarification_history = []  # 从会话中获取历史记录
             goal_oriented_score = clarification_engine._calculate_goal_oriented_score(
-                quality_analysis, clarification_history
+                {
+                    "final_quality_score": clarification_engine._calculate_overall_quality(
+                        quality_analysis
+                    )
+                },
+                session_data["clarification_history"],
             )
 
             # 计算整体质量评分
@@ -1108,22 +1155,21 @@ async def clarify_requirement(request: ClarificationRequest) -> ClarificationRes
             return ClarificationResponse(
                 session_id=request.session_id,
                 status="continue_clarification",
-                response=f"基于质量分析，需要进一步澄清以达到目标质量标准。{reason}",
-                next_questions=[
-                    q.get("question", q) if isinstance(q, dict) else q
-                    for q in next_questions
-                ],
+                response=f"第{session_data['round_count']}轮澄清：基于质量分析，需要进一步澄清以达到目标质量标准。{reason}",
+                next_questions=question_texts,
                 progress={
                     "overall_quality": overall_quality,
-                    "goal_oriented_score": goal_oriented_score,  # 修正后的评分
+                    "goal_oriented_score": goal_oriented_score,
                     "quality_threshold_met": overall_quality >= 0.8,
-                    "target_oriented": True,  # 明确标识为目标导向
+                    "target_oriented": True,
                     "clarification_strategy": "quality_driven_dynamic",
+                    "round_count": session_data["round_count"],
+                    "max_rounds": 5,
                     "reason": reason,
                 },
             )
         else:
-            # 质量已达标，生成最终报告
+            # 质量已达标或达到最大轮次，生成最终报告
             quality_report = clarification_engine.generate_quality_report(
                 quality_analysis
             )
@@ -1133,23 +1179,34 @@ async def clarify_requirement(request: ClarificationRequest) -> ClarificationRes
                 quality_analysis
             )
 
-            # 从会话中获取澄清历史记录
-            clarification_history = []  # 这里应该从会话存储中获取
+            # 完成澄清，清理会话数据
+            if request.session_id in session_storage:
+                del session_storage[request.session_id]
 
             final_goal_score = clarification_engine._calculate_goal_oriented_score(
-                {"final_quality_score": overall_quality}, clarification_history
+                {"final_quality_score": overall_quality},
+                session_data["clarification_history"],
+            )
+
+            completion_reason = (
+                "quality_achieved" if overall_quality >= 0.8 else "max_rounds_reached"
             )
 
             return ClarificationResponse(
                 session_id=request.session_id,
                 status="clarification_complete",
-                response=f"需求澄清已完成，质量达到目标标准，可以生成需求规格说明书。{reason}",
-                final_report={"report": quality_report},
+                response=f"需求澄清已完成（共{session_data['round_count']}轮）。{reason}",
+                final_report={
+                    "report": quality_report,
+                    "final_requirement": session_data["requirement_text"],
+                },
                 progress={
                     "overall_quality": overall_quality,
                     "goal_oriented_score": final_goal_score,
-                    "goal_achieved": True,
+                    "goal_achieved": overall_quality >= 0.8,
                     "ready_for_specification": True,
+                    "completion_reason": completion_reason,
+                    "total_rounds": session_data["round_count"],
                     "reason": reason,
                 },
             )

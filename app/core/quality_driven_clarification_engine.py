@@ -539,7 +539,14 @@ class QualityDrivenClarificationEngine:
             total_questions = len(questions)
 
             for question in questions:
-                question_text = question.get("question", "").lower()
+                # 安全提取问题文本
+                if isinstance(question, dict):
+                    question_text = question.get("question", "").lower()
+                elif isinstance(question, str):
+                    question_text = question.lower()
+                else:
+                    question_text = str(question).lower()
+
                 # 检查问题是否针对需求文档的核心要素
                 core_elements = [
                     "功能需求",
