@@ -39,3 +39,17 @@ beautifulsoup4~=4.13.3
 
 huggingface-hub~=0.29.2
 setuptools~=75.8.0
+
+gradio
+groq
+anthropic
+google-generativeai
+python-dotenv
+pydantic
+requests
+aiohttp
+PyYAML
+toml
+docker
+fastapi>=0.100.0
+uvicorn[standard]>=0.22.0

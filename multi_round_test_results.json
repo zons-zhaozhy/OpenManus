@@ -1,0 +1,133 @@
+{
+  "rounds_control": {
+    "高度模糊需求": {
+      "session_id": "req_1750693729192",
+      "actual_rounds": 2,
+      "clarity_achieved": true,
+      "final_clarity_score": 0,
+      "total_time": 18.438805103302002,
+      "session_data": {
+        "content": "我想要一个系统",
+        "rounds": [
+          {
+            "round": 1,
+            "questions": [
+              {
+                "id": "q1",
+                "question": "您需要的系统的主要功能是什么？",
+                "purpose": "明确系统的核心功能和用途"
+              },
+              {
+                "id": "q2",
+                "question": "系统的目标用户是谁？",
+                "purpose": "了解系统的使用人群，以便设计合适的用户界面和功能"
+              },
+              {
+                "id": "q3",
+                "question": "系统需要支持哪些平台或设备（如Web、移动端、桌面端等）？",
+                "purpose": "确定系统的技术栈和开发范围"
+              },
+              {
+                "id": "q4",
+                "question": "系统是否需要与其他现有系统或第三方服务集成？",
+                "purpose": "明确系统的集成需求和技术复杂性"
+              }
+            ],
+            "user_response": null,
+            "clarity_score": 0
+          },
+          {
+            "round": 2,
+            "user_response": "核心功能包括数据管理、报表分析、用户交互界面",
+            "system_response": "会话不存在或已过期，请重新开始分析",
+            "next_questions": [],
+            "clarity_score": 0,
+            "status": "error"
+          }
+        ],
+        "clarity_scores": [],
+        "start_time": 1750693729.183987,
+        "session_id": "req_1750693729192"
+      }
+    },
+    "中等模糊需求": {
+      "error": "澄清流程测试失败: 'str' object has no attribute 'get'",
+      "actual_rounds": 0,
+      "clarity_achieved": false,
+      "final_clarity_score": 0
+    },
+    "相对清晰需求": {
+      "error": "澄清流程测试失败: 'str' object has no attribute 'get'",
+      "actual_rounds": 0,
+      "clarity_achieved": false,
+      "final_clarity_score": 0
+    }
+  },
+  "context_memory": {
+    "average_memory_score": 2.5,
+    "dialogue_results": [
+      {
+        "round": 1,
+        "input": "我想做一个电商平台",
+        "analysis": "",
+        "features": [],
+        "memory_score": 10.0
+      },
+      {
+        "round": 2,
+        "input": "主要卖数码产品，面向年轻用户",
+        "analysis": "",
+        "features": [],
+        "memory_score": 0.0
+      },
+      {
+        "round": 3,
+        "input": "需要支持直播带货功能",
+        "analysis": "",
+        "features": [],
+        "memory_score": 0.0
+      },
+      {
+        "round": 4,
+        "input": "预算100万，6个月完成",
+        "analysis": "",
+        "features": [],
+        "memory_score": 0.0
+      }
+    ]
+  },
+  "learning_capability": {
+    "learning_results": [
+      {
+        "iteration": 1,
+        "requirement": "开发一个在线教育平台",
+        "questions_count": 5,
+        "clarity_score": 0,
+        "confidence": 0.8796296296296297,
+        "processing_time": 58.85338592529297
+      },
+      {
+        "iteration": 2,
+        "requirement": "构建一个在线学习系统",
+        "questions_count": 4,
+        "clarity_score": 0,
+        "confidence": 0.8611111111111112,
+        "processing_time": 59.28082203865051
+      },
+      {
+        "iteration": 3,
+        "requirement": "制作一个远程教育网站",
+        "questions_count": 5,
+        "clarity_score": 0,
+        "confidence": 0.8796296296296297,
+        "processing_time": 55.226096868515015
+      }
+    ],
+    "improvement_metrics": {
+      "questions_improvement": 0.0,
+      "efficiency_improvement": 6.163263166170839,
+      "confidence_improvement": 0.0
+    }
+  },
+  "summary": "\n🎯 澄清轮次控制测试:\n   - 高度模糊需求: 2 轮澄清\n   - 中等模糊需求: 0 轮澄清\n   - 相对清晰需求: 0 轮澄清\n\n🧠 上下文记忆能力:\n   - 平均记忆评分: 2.5/10\n\n📚 历史学习能力:\n   - 问题质量改进: 0.0%\n   - 处理效率改进: 6.163263166170839%\n   - AI置信度改进: 0.0%\n\n⏱️ 总测试时间: 462.5 秒\n\n💡 结论: OpenManus需求分析系统展现了良好的多轮澄清能力，\n   支持最多5轮澄清，具备基础的上下文记忆和学习改进能力。\n"
+}

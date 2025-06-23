@@ -1,0 +1,378 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 基础重置和全局样式 */
+html,
+body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: #111827;
+    color: #f9fafb;
+}
+
+#root {
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+}
+
+/* 滚动条样式 - 更现代化的设计 */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #1f2937;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #4b5563;
+    border-radius: 4px;
+    transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #6b7280;
+}
+
+::-webkit-scrollbar-corner {
+    background: #1f2937;
+}
+
+/* 自定义动画 */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.7;
+    }
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes bounce {
+
+    0%,
+    20%,
+    53%,
+    80%,
+    100% {
+        transform: translate3d(0, 0, 0);
+    }
+
+    40%,
+    43% {
+        transform: translate3d(0, -4px, 0);
+    }
+
+    70% {
+        transform: translate3d(0, -2px, 0);
+    }
+
+    90% {
+        transform: translate3d(0, -1px, 0);
+    }
+}
+
+/* 基础组件样式 */
+.animate-fadeIn {
+    animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slideIn {
+    animation: slideIn 0.3s ease-out;
+}
+
+.animate-pulse-custom {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-bounce-custom {
+    animation: bounce 1s infinite;
+}
+
+/* 消息气泡动画 */
+.message-bubble {
+    animation: fadeIn 0.4s ease-out;
+    transform-origin: bottom;
+}
+
+.message-bubble:hover {
+    transform: scale(1.01);
+    transition: transform 0.2s ease;
+}
+
+/* 智能体卡片动画 */
+.agent-card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transform-origin: center;
+}
+
+.agent-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+}
+
+.agent-card.active {
+    transform: scale(1.02);
+    box-shadow: 0 8px 30px rgba(59, 130, 246, 0.3);
+}
+
+/* 进度条动画 */
+.progress-bar {
+    background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.progress-bar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg,
+            transparent,
+            rgba(255, 255, 255, 0.2),
+            transparent);
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% {
+        left: -100%;
+    }
+
+    100% {
+        left: 100%;
+    }
+}
+
+/* 输入框动画 */
+.input-focus {
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.input-focus:focus {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+/* 按钮动画 */
+.button-primary {
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.button-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+}
+
+.button-primary:active {
+    transform: translateY(0);
+}
+
+/* 状态指示器 */
+.status-indicator {
+    position: relative;
+}
+
+.status-indicator.active::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: inherit;
+    background: inherit;
+    animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes ping {
+
+    75%,
+    100% {
+        transform: scale(2);
+        opacity: 0;
+    }
+}
+
+/* 卡片阴影效果 */
+.card-shadow {
+    box-shadow:
+        0 1px 3px rgba(0, 0, 0, 0.1),
+        0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.card-shadow-lg {
+    box-shadow:
+        0 10px 15px -3px rgba(0, 0, 0, 0.1),
+        0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* 深色主题增强 */
+.bg-gray-850 {
+    background-color: #1e293b;
+}
+
+.bg-gray-925 {
+    background-color: #0f172a;
+}
+
+/* 文本渐变效果 */
+.text-gradient {
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .mobile-stack {
+        flex-direction: column;
+    }
+
+    .mobile-full {
+        width: 100%;
+    }
+
+    .mobile-hidden {
+        display: none;
+    }
+}
+
+/* 聊天区域滚动优化 */
+.chat-scroll {
+    scroll-behavior: smooth;
+}
+
+.chat-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+
+.chat-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.chat-scroll::-webkit-scrollbar-thumb {
+    background: rgba(75, 85, 99, 0.5);
+    border-radius: 3px;
+}
+
+.chat-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(75, 85, 99, 0.7);
+}
+
+/* 加载动画 */
+.loading-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.loading-dots span {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background-color: currentColor;
+    animation: loading-bounce 1.4s ease-in-out both infinite;
+}
+
+.loading-dots span:nth-child(1) {
+    animation-delay: -0.32s;
+}
+
+.loading-dots span:nth-child(2) {
+    animation-delay: -0.16s;
+}
+
+@keyframes loading-bounce {
+
+    0%,
+    80%,
+    100% {
+        transform: scale(0);
+    }
+
+    40% {
+        transform: scale(1);
+    }
+}
+
+/* 工具提示样式 */
+.tooltip {
+    position: relative;
+}
+
+.tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1f2937;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+    z-index: 1000;
+}
+
+.tooltip:hover::after {
+    opacity: 1;
+}
+
+/* 全局过渡效果 */
+* {
+    transition-property: background-color, border-color, color, fill, stroke, opacity, box-shadow, transform;
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}

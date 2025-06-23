@@ -18,7 +18,15 @@ from tenacity import (
     wait_random_exponential,
 )
 
-from app.bedrock import BedrockClient
+# 可选导入 bedrock 客户端
+try:
+    from app.bedrock import BedrockClient
+
+    BEDROCK_AVAILABLE = True
+except ImportError:
+    BedrockClient = None
+    BEDROCK_AVAILABLE = False
+
 from app.config import LLMSettings, config
 from app.exceptions import TokenLimitExceeded
 from app.logger import logger  # Assuming a logger is set up in your app
@@ -29,7 +37,6 @@ from app.schema import (
     Message,
     ToolChoice,
 )
-
 
 REASONING_MODELS = ["o1", "o3-mini"]
 MULTIMODAL_MODELS = [
@@ -174,6 +181,11 @@ class TokenCounter:
 class LLM:
     _instances: Dict[str, "LLM"] = {}
 
+    @classmethod
+    def clear_instances(cls):
+        """清除所有单例实例，强制重新初始化"""
+        cls._instances.clear()
+
     def __new__(
         cls, config_name: str = "default", llm_config: Optional[LLMSettings] = None
     ):
@@ -220,6 +232,10 @@ class LLM:
                     api_version=self.api_version,
                 )
             elif self.api_type == "aws":
+                if not BEDROCK_AVAILABLE:
+                    raise ImportError(
+                        "BedrockClient不可用，请安装boto3依赖: pip install boto3"
+                    )
                 self.client = BedrockClient()
             else:
                 self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
@@ -537,9 +553,7 @@ class LLM:
             multimodal_content = (
                 [{"type": "text", "text": content}]
                 if isinstance(content, str)
-                else content
-                if isinstance(content, list)
-                else []
+                else content if isinstance(content, list) else []
             )
 
             # Add images to content

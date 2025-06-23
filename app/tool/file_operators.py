@@ -6,7 +6,13 @@ from typing import Optional, Protocol, Tuple, Union, runtime_checkable
 
 from app.config import SandboxSettings
 from app.exceptions import ToolError
-from app.sandbox.client import SANDBOX_CLIENT
+
+# 可选导入sandbox，如果不可用则设为None
+try:
+    from app.sandbox.client import SANDBOX_CLIENT
+except (ImportError, ModuleNotFoundError) as e:
+    print(f"警告: Sandbox功能不可用 ({e})，将禁用相关功能")
+    SANDBOX_CLIENT = None
 
 
 PathLike = Union[str, Path]
@@ -97,6 +103,8 @@ class SandboxFileOperator(FileOperator):
     """File operations implementation for sandbox environment."""
 
     def __init__(self):
+        if SANDBOX_CLIENT is None:
+            raise RuntimeError("Sandbox功能不可用，无法创建SandboxFileOperator")
         self.sandbox_client = SANDBOX_CLIENT
 
     async def _ensure_sandbox_initialized(self):

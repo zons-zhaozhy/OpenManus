@@ -6,7 +6,13 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.llm import LLM
 from app.logger import logger
-from app.sandbox.client import SANDBOX_CLIENT
+
+# 可选导入sandbox，如果不可用则设为None
+try:
+    from app.sandbox.client import SANDBOX_CLIENT
+except (ImportError, ModuleNotFoundError) as e:
+    print(f"警告: Sandbox功能不可用 ({e})，将禁用相关功能")
+    SANDBOX_CLIENT = None
 from app.schema import ROLE_TYPE, AgentState, Memory, Message
 
 
@@ -99,19 +105,22 @@ class BaseAgent(BaseModel, ABC):
         Raises:
             ValueError: If the role is unsupported.
         """
-        message_map = {
-            "user": Message.user_message,
-            "system": Message.system_message,
-            "assistant": Message.assistant_message,
-            "tool": lambda content, **kw: Message.tool_message(content, **kw),
-        }
-
-        if role not in message_map:
+        if role not in ["user", "system", "assistant", "tool"]:
             raise ValueError(f"Unsupported message role: {role}")
 
         # Create message with appropriate parameters based on role
-        kwargs = {"base64_image": base64_image, **(kwargs if role == "tool" else {})}
-        self.memory.add_message(message_map[role](content, **kwargs))
+        if role == "user":
+            message = Message.user_message(content, base64_image)
+        elif role == "system":
+            message = Message.system_message(
+                content
+            )  # system_message doesn't accept base64_image
+        elif role == "assistant":
+            message = Message.assistant_message(content, base64_image)
+        elif role == "tool":
+            message = Message.tool_message(content, base64_image=base64_image, **kwargs)
+
+        self.memory.add_message(message)
 
     async def run(self, request: Optional[str] = None) -> str:
         """Execute the agent's main loop asynchronously.
@@ -150,7 +159,9 @@ class BaseAgent(BaseModel, ABC):
                 self.current_step = 0
                 self.state = AgentState.IDLE
                 results.append(f"Terminated: Reached max steps ({self.max_steps})")
-        await SANDBOX_CLIENT.cleanup()
+        # 清理sandbox（如果可用）
+        if SANDBOX_CLIENT is not None:
+            await SANDBOX_CLIENT.cleanup()
         return "\n".join(results) if results else "No steps executed"
 
     @abstractmethod
