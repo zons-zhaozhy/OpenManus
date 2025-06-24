@@ -418,3 +418,41 @@ class ProjectSession(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.now)
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+
+
+# 需求分析相关模型
+class RequirementAnalysisRequest(BaseModel):
+    """需求分析请求模型"""
+
+    content: str = Field(..., description="需求内容")
+    domain: Optional[str] = Field(None, description="业务领域")
+    priority: Optional[str] = Field(None, description="优先级")
+    session_id: Optional[str] = Field(None, description="会话ID")
+    context: Optional[Dict[str, Any]] = Field(
+        default_factory=dict, description="上下文信息"
+    )
+
+
+class RequirementAnalysisResponse(BaseModel):
+    """需求分析响应模型"""
+
+    original_content: str = Field(..., description="原始需求内容")
+    clarified_requirements: str = Field(..., description="澄清后的需求")
+    technical_feasibility: Dict[str, Any] = Field(
+        default_factory=dict, description="技术可行性评估"
+    )
+    recommendations: List[str] = Field(default_factory=list, description="建议清单")
+    knowledge_insights: List[Dict[str, Any]] = Field(
+        default_factory=list, description="知识库洞察"
+    )
+    code_insights: List[Dict[str, Any]] = Field(
+        default_factory=list, description="代码库洞察"
+    )
+    confidence_score: float = Field(default=0.0, description="置信度评分")
+    analysis_metadata: Dict[str, Any] = Field(
+        default_factory=dict, description="分析元数据"
+    )
+
+    # 时间信息
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)

@@ -16,6 +16,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.ai_company import ai_company_router
+from app.api.codebase import router as codebase_router
+from app.api.knowledge_base import router as knowledge_router
+from app.api.orchestrated_requirements import router as orchestrated_router
 from app.api.project_management import project_router
 from app.api.requirements import requirements_router
 
@@ -44,8 +47,11 @@ app.add_middleware(
 
 # 注册API路由
 app.include_router(requirements_router)
+app.include_router(orchestrated_router)  # 协调式需求分析
 app.include_router(ai_company_router)
 app.include_router(project_router)
+app.include_router(knowledge_router)
+app.include_router(codebase_router)
 
 # 如果前端构建文件存在，提供静态文件服务
 web_build_path = "app/web/dist"

@@ -337,4 +337,58 @@ class Config:
         return PROJECT_ROOT
 
 
+# 需求质量评估配置
+REQUIREMENT_QUALITY_CONFIG = {
+    # 质量阈值配置 - 基于"可设计性"标准
+    "quality_thresholds": {
+        "overall_threshold": 0.90,  # 整体质量阈值 - 必须支撑后续设计
+        "dimension_threshold": 0.80,  # 单维度质量阈值 - 每个维度都要充分
+        "excellent_threshold": 0.95,  # 优秀质量阈值
+        "design_readiness_threshold": 0.85,  # 设计就绪阈值
+    },
+    # 澄清轮次配置
+    "clarification_rounds": {
+        "max_rounds": 8,  # 最大澄清轮次（增加到8轮）
+        "min_rounds": 3,  # 最少澄清轮次（提高到3轮）
+        "early_stop_threshold": 0.95,  # 提前结束的质量阈值
+        "force_continue_below": 0.85,  # 强制继续澄清的阈值
+    },
+    # 维度权重配置（基于可设计性）
+    "dimension_weights": {
+        "functional": 0.25,  # 功能需求（最重要）
+        "non_functional": 0.20,  # 非功能需求（设计关键）
+        "user_roles": 0.15,  # 用户角色（权限设计）
+        "business_rules": 0.15,  # 业务规则（实现指导）
+        "acceptance_criteria": 0.10,  # 验收标准（测试基础）
+        "constraints": 0.08,  # 约束条件
+        "integration": 0.04,  # 集成需求
+        "data_requirements": 0.03,  # 数据需求
+    },
+    # 可设计性评分配置
+    "design_readiness": {
+        "architecture_feasibility": 0.30,  # 架构设计可行性
+        "implementation_clarity": 0.25,  # 实现指导清晰性
+        "testing_completeness": 0.20,  # 测试完整性
+        "project_controllability": 0.15,  # 项目可控性
+        "risk_identification": 0.10,  # 风险识别度
+    },
+    # 评分严格度配置（更严格）
+    "scoring_strictness": {
+        "completeness_weight": 0.35,  # 完整性权重（提高）
+        "clarity_weight": 0.25,  # 清晰度权重
+        "specificity_weight": 0.25,  # 具体性权重
+        "feasibility_weight": 0.15,  # 可行性权重
+        "bonus_threshold": 0.80,  # 奖励分阈值（提高）
+        "bonus_multiplier": 1.03,  # 奖励倍数（降低到3%）
+        "penalty_threshold": 0.50,  # 惩罚阈值
+        "penalty_multiplier": 0.85,  # 严重不足时的惩罚
+    },
+    # 分级处理配置
+    "aspect_classification": {
+        "critical_max_per_round": 2,  # 每轮最多处理2个关键问题
+        "high_max_per_round": 3,  # 每轮最多处理3个重要问题
+        "total_max_per_round": 4,  # 每轮最多4个问题
+    },
+}
+
 config = Config()

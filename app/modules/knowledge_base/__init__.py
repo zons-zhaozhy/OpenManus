@@ -8,18 +8,11 @@
 - 面向多个智能体提供知识服务
 """
 
-from .core import KnowledgeBaseCore
-from .manager import KnowledgeBaseManager
-from .repository import KnowledgeRepository
 from .service import KnowledgeService
-from .types import KnowledgeEntry, KnowledgePattern, KnowledgeType
+from .types import KnowledgeEntry, KnowledgeType
 
 __all__ = [
-    "KnowledgeBaseCore",
-    "KnowledgeBaseManager",
-    "KnowledgeRepository",
+    "KnowledgeService",
     "KnowledgeType",
     "KnowledgeEntry",
-    "KnowledgePattern",
-    "KnowledgeService",
 ]

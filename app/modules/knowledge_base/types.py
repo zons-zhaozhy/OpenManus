@@ -99,6 +99,9 @@ class KnowledgeQuery(BaseModel):
     """知识查询请求"""
 
     query_text: str = Field(..., description="查询文本")
+    knowledge_base_ids: Optional[List[str]] = Field(
+        None, description="指定知识库ID列表"
+    )
     knowledge_types: Optional[List[KnowledgeType]] = Field(
         None, description="指定知识类型"
     )
@@ -125,6 +128,15 @@ class KnowledgeSearchResult(BaseModel):
         default_factory=list, description="匹配的关键词"
     )
     explanation: str = Field(..., description="推荐解释")
+
+
+class KnowledgeSearchResponse(BaseModel):
+    """知识搜索响应（简化版本）"""
+
+    query: str = Field(..., description="查询文本")
+    results: List[Dict[str, Any]] = Field(default_factory=list, description="搜索结果")
+    total_results: int = Field(default=0, description="总结果数")
+    search_time_ms: float = Field(default=0.0, description="搜索时间（毫秒）")
 
 
 class KnowledgeRecommendation(BaseModel):

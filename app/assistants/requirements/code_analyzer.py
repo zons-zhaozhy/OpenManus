@@ -125,34 +125,41 @@ class CodeAnalyzer:
             "file_structure": {},
         }
 
-        for root, dirs, files in os.walk(self.project_root):
-            # 跳过常见的隐藏目录和缓存目录
-            dirs[:] = [
-                d
-                for d in dirs
-                if not d.startswith(".") and d not in ["__pycache__", "node_modules"]
-            ]
+        # 只分析项目目录，不遍历整个系统
+        project_dirs_to_scan = ["app", "src", "lib", "tests"]
 
-            for file in files:
-                if not file.startswith("."):
-                    overview["total_files"] += 1
+        for project_dir in project_dirs_to_scan:
+            dir_path = os.path.join(self.project_root, project_dir)
+            if os.path.exists(dir_path):
+                for root, dirs, files in os.walk(dir_path):
+                    # 跳过常见的隐藏目录和缓存目录
+                    dirs[:] = [
+                        d
+                        for d in dirs
+                        if not d.startswith(".")
+                        and d not in ["__pycache__", "node_modules", ".git"]
+                    ]
 
-                    # 分析文件类型
-                    ext = Path(file).suffix.lower()
-                    if ext in [
-                        ".py",
-                        ".js",
-                        ".ts",
-                        ".java",
-                        ".cpp",
-                        ".c",
-                        ".html",
-                        ".css",
-                    ]:
-                        overview["code_files"] += 1
-                        overview["languages"][ext] = (
-                            overview["languages"].get(ext, 0) + 1
-                        )
+                    for file in files:
+                        if not file.startswith("."):
+                            overview["total_files"] += 1
+
+                            # 分析文件类型
+                            ext = Path(file).suffix.lower()
+                            if ext in [
+                                ".py",
+                                ".js",
+                                ".ts",
+                                ".java",
+                                ".cpp",
+                                ".c",
+                                ".html",
+                                ".css",
+                            ]:
+                                overview["code_files"] += 1
+                                overview["languages"][ext] = (
+                                    overview["languages"].get(ext, 0) + 1
+                                )
 
         return overview
 
@@ -174,8 +181,14 @@ class CodeAnalyzer:
     def _analyze_python_file(self, file_path: str):
         """分析Python文件"""
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read()
+            # 跳过系统文件和非项目文件
+            if not self._is_project_file(file_path):
+                return
+
+            # 尝试多种编码
+            content = self._read_file_safely(file_path)
+            if content is None:
+                return
 
             tree = ast.parse(content)
 
@@ -199,6 +212,28 @@ class CodeAnalyzer:
 
         except Exception as e:
             logger.warning(f"分析文件 {file_path} 时出错: {e}")
+
+    def _is_project_file(self, file_path: str) -> bool:
+        """检查是否为项目文件"""
+        # 排除系统路径
+        system_paths = ["/usr/", "/Library/", "/System/", "/opt/", "/etc/"]
+        return not any(file_path.startswith(path) for path in system_paths)
+
+    def _read_file_safely(self, file_path: str) -> Optional[str]:
+        """安全读取文件，处理编码问题"""
+        encodings = ["utf-8", "gbk", "latin1", "cp1252"]
+
+        for encoding in encodings:
+            try:
+                with open(file_path, "r", encoding=encoding) as f:
+                    return f.read()
+            except (UnicodeDecodeError, UnicodeError):
+                continue
+            except Exception:
+                break
+
+        logger.warning(f"无法读取文件 {file_path}：编码问题")
+        return None
 
     def _create_component_from_class(
         self, node: ast.ClassDef, file_path: str, content: str

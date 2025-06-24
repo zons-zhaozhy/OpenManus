@@ -153,15 +153,14 @@ export function RequirementsPage() {
             setAnalysisMetrics(metrics);
             setShowScientificPanel(true);
 
-            // 创建临时会话对象
+            // 创建会话并启动澄清流程
             const tempSession: ClarificationSession = {
                 session_id: data.session_id,
                 user_input: currentInput,
                 questions: [],
                 answers: {},
-                clarity_score: 0
+                clarity_score: data.result?.clarity_score || 0
             };
-
             setSession(tempSession);
 
             // 根据返回状态显示不同的消息
@@ -170,45 +169,47 @@ export function RequirementsPage() {
                 assistantMessage = `分析过程中遇到问题：${data.result?.error || '未知错误'}。请稍后重试或换个表达方式。`;
             } else if (data.status === 'timeout') {
                 assistantMessage = `分析处理时间较长，${data.result?.error || '请稍后重试'}。我会为您提供基础的需求澄清。`;
-            } else if (data.status === 'clarification_needed') {
+            } else if (data.result?.clarification_questions && data.result.clarification_questions.length > 0) {
                 // 显示澄清问题
-                const questions = data.result?.clarification_questions || [];
-                const initialAnalysis = data.result?.initial_analysis || '';
-                const processingTime = data.progress?.processing_time || 0;
-                const confidence = data.progress?.ai_confidence || 0;
+                const questions = data.result.clarification_questions;
+                const initialAnalysis = data.result.initial_analysis || '';
+                const processingTime = data.processing_time || 0;
+                const confidence = data.confidence || 0;
 
                 // 构建格式化的回复
                 assistantMessage = `## 📋 需求分析结果\n\n`;
                 assistantMessage += `${initialAnalysis}\n\n`;
 
-                if (data.result?.requirement_type) {
+                if (data.result.requirement_type) {
                     assistantMessage += `**需求类型：** ${data.result.requirement_type}\n\n`;
                 }
 
-                if (data.result?.detected_features && data.result.detected_features.length > 0) {
+                if (data.result.detected_features && data.result.detected_features.length > 0) {
                     assistantMessage += `**识别到的关键特性：** ${data.result.detected_features.join('、')}\n\n`;
                 }
 
                 assistantMessage += `**分析置信度：** ${Math.round(confidence * 100)}% | **处理时间：** ${processingTime}秒\n\n`;
                 assistantMessage += `---\n\n`;
 
-                if (questions.length > 0) {
-                    assistantMessage += '## 🤔 澄清问题\n\n';
-                    assistantMessage += '为了更好地理解您的需求，请回答以下问题：\n\n';
-                    questions.forEach((q: any, index: number) => {
-                        const priorityIcon = q.priority === 'high' ? '🔴' : q.priority === 'medium' ? '🟡' : '🟢';
-                        assistantMessage += `### ${index + 1}. ${priorityIcon} ${q.category}\n`;
-                        assistantMessage += `${q.question}\n\n`;
-                    });
-                    assistantMessage += '💡 **提示：** 您可以逐一回答这些问题，或者一次性回答多个问题，我会根据您的回答进行进一步分析。';
-                }
-            } else if (data.result?.error) {
-                assistantMessage = `分析过程中遇到问题：${data.result.error}。请稍后重试或换个表达方式。`;
+                // 添加澄清问题
+                assistantMessage += '## 🤔 澄清问题\n\n';
+                assistantMessage += '为了更好地理解您的需求，请回答以下问题。您可以选择回答任何一个问题，我会基于您的回答进行进一步分析：\n\n';
+                questions.forEach((q: any, index: number) => {
+                    const priorityIcon = q.priority === 'high' ? '🔴' : q.priority === 'medium' ? '🟡' : '🟢';
+                    assistantMessage += `### ${index + 1}. ${priorityIcon} ${q.category}\n\n`;
+                    assistantMessage += `**${q.question}**\n\n`;
+                    if (q.purpose) {
+                        assistantMessage += `*目的：${q.purpose}*\n\n`;
+                    }
+                });
+
+                assistantMessage += `\n💡 **提示：** 您可以直接输入答案，我会自动启动多轮澄清流程来进一步完善需求。`;
             } else {
-                assistantMessage = '感谢您的需求描述！我已经开始分析您的需求。让我为您进一步澄清一些关键信息。';
+                // 没有澄清问题的情况
+                assistantMessage = `## 📋 需求分析完成\n\n`;
+                assistantMessage += data.result?.initial_analysis || '您的需求已经比较清晰，无需进一步澄清。';
             }
 
-            // 添加用户消息和助手回复
             setChatHistory(prev => [
                 ...prev,
                 { type: 'user', content: currentInput, timestamp: new Date() },
@@ -219,7 +220,6 @@ export function RequirementsPage() {
                     agent: 'clarifier'
                 }
             ]);
-
             setCurrentInput('');
         },
         onError: (error: Error) => {
@@ -312,14 +312,14 @@ export function RequirementsPage() {
             let assistantMessage = '';
             if (data.status === 'error') {
                 assistantMessage = `## ❌ 处理错误\n\n${data.response || '处理您的回答时遇到问题，请重新尝试。'}`;
-            } else {
-                assistantMessage = `## 💭 需求澄清反馈\n\n`;
+            } else if (data.status === 'continue_clarification') {
+                assistantMessage = `## 💭 澄清反馈\n\n`;
                 assistantMessage += data.response || '谢谢您的回答！让我继续分析...';
 
                 // 如果有后续问题，添加到消息中
                 if (data.next_questions && data.next_questions.length > 0) {
                     assistantMessage += '\n\n---\n\n## 🔍 进一步澄清\n\n';
-                    assistantMessage += '继续回答以下问题有助于更好地理解您的需求：\n\n';
+                    assistantMessage += '基于您的回答，我需要进一步了解以下信息：\n\n';
                     data.next_questions.forEach((q: string, index: number) => {
                         assistantMessage += `### ${index + 1}. ${q}\n\n`;
                     });
@@ -328,11 +328,46 @@ export function RequirementsPage() {
                 // 添加进度信息
                 if (data.progress) {
                     const progress = data.progress;
-                    assistantMessage += `\n---\n\n📊 **澄清进度：** ${progress.answered_questions || 0}/${progress.total_questions || 5} 问题已回答`;
-                    if (progress.completion_percentage) {
-                        assistantMessage += ` (${progress.completion_percentage}%)`;
+                    assistantMessage += `\n---\n\n📊 **澄清进度：** 第${progress.round_count || 1}轮澄清 (${progress.round_count || 1}/${progress.max_rounds || 5})`;
+                    if (progress.overall_quality !== undefined) {
+                        assistantMessage += ` | **质量评分：** ${Math.round(progress.overall_quality * 100)}%`;
+                    }
+                    if (progress.goal_oriented_score !== undefined) {
+                        assistantMessage += ` | **目标导向评分：** ${Math.round(progress.goal_oriented_score * 100)}%`;
                     }
                 }
+            } else if (data.status === 'clarification_complete') {
+                assistantMessage = `## ✅ 澄清完成\n\n`;
+                assistantMessage += data.response || '需求澄清已完成！';
+
+                // 显示最终报告
+                if (data.final_report) {
+                    assistantMessage += '\n\n---\n\n## 📄 最终需求报告\n\n';
+                    if (data.final_report.report) {
+                        assistantMessage += data.final_report.report;
+                    }
+                    if (data.final_report.final_requirement) {
+                        assistantMessage += '\n\n### 📝 完整需求描述\n\n';
+                        assistantMessage += data.final_report.final_requirement;
+                    }
+                }
+
+                // 显示完成状态
+                if (data.progress) {
+                    const progress = data.progress;
+                    assistantMessage += `\n\n---\n\n📊 **最终结果：** 共完成${progress.total_rounds || 0}轮澄清`;
+                    if (progress.overall_quality !== undefined) {
+                        assistantMessage += ` | **最终质量：** ${Math.round(progress.overall_quality * 100)}%`;
+                    }
+                    if (progress.goal_oriented_score !== undefined) {
+                        assistantMessage += ` | **目标达成：** ${Math.round(progress.goal_oriented_score * 100)}%`;
+                    }
+                }
+
+                // 清理会话
+                setSession(null);
+            } else {
+                assistantMessage = `## 💭 澄清反馈\n\n${data.response || '谢谢您的回答！'}`;
             }
 
             setChatHistory(prev => [

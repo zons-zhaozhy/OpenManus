@@ -8,21 +8,25 @@
 """
 
 import asyncio
+import os
 import time
 import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
+from loguru import logger
 from pydantic import BaseModel
 
 from app.assistants.requirements.flow import RequirementsFlow
+from app.config import REQUIREMENT_QUALITY_CONFIG
 from app.core.adaptive_learning_system import AnalysisCase, adaptive_learning_system
 from app.core.llm_analysis_engine import LLMAnalysisEngine
 from app.core.multi_dimensional_engine import MultiDimensionalAnalysisEngine
 from app.core.quality_driven_clarification_engine import (
     QualityDrivenClarificationEngine,
 )
+from app.llm import LLM
 from app.logger import logger
 
 
@@ -31,7 +35,8 @@ class RequirementInput(BaseModel):
     content: str
     project_id: Optional[str] = None  # 项目制管理支持
     project_context: Optional[str] = None
-    use_multi_dimensional: Optional[bool] = False  # 新增选项
+    use_multi_dimensional: Optional[bool] = True  # 默认启用多维度分析
+    enable_conflict_detection: Optional[bool] = True  # 默认启用冲突检测
 
 
 class ClarificationRequest(BaseModel):
@@ -64,8 +69,11 @@ class RequirementStatus(BaseModel):
 # 创建路由器
 requirements_router = APIRouter(prefix="/api/requirements", tags=["Requirements"])
 
-# 会话存储（实际项目中应该使用数据库）
-active_sessions: Dict[str, Dict] = {}
+# 会话存储（简单实现，实际应该使用数据库）
+session_storage = {}
+
+# 活跃会话存储
+active_sessions = {}
 
 
 async def _analyze_user_requirement(content: str) -> Dict:
@@ -973,6 +981,14 @@ async def analyze_requirement(request: RequirementInput) -> Dict:
             "original_content": request.content,
         }
 
+        # 初始化澄清会话存储，使用用户输入作为初始需求文本
+        session_storage[session_id] = {
+            "requirement_text": request.content,
+            "clarification_history": [],
+            "round_count": 0,
+            "initial_analysis": result.get("result", {}),
+        }
+
         # 增强返回结果，包含学习洞察
         enhanced_result = {
             **result,
@@ -1089,25 +1105,20 @@ async def clarify_requirement(request: ClarificationRequest) -> ClarificationRes
         # 生成目标导向的澄清计划
         clarification_goals = (
             await clarification_engine.generate_targeted_clarification_goals(
-                quality_analysis
+                quality_analysis, session_data["requirement_text"]  # 传递需求文本
             )
         )
 
-        # 判断是否应该继续澄清（基于质量达标和轮次限制）
-        should_continue_result = (
+        # 判断是否需要继续澄清
+        should_continue, reason = (
             await clarification_engine.should_continue_clarification(
-                quality_analysis, session_data["round_count"]
+                quality_analysis,
+                session_data["round_count"],
+                session_data["requirement_text"],
             )
         )
 
-        # 处理返回值（可能是元组也可能是单个值）
-        if isinstance(should_continue_result, tuple):
-            should_continue, reason = should_continue_result
-        else:
-            should_continue = should_continue_result
-            reason = "质量评估完成"
-
-        if should_continue and session_data["round_count"] < 5:  # 最多5轮澄清
+        if should_continue and session_data["round_count"] < 7:  # 最多7轮澄清
             # 生成下一轮澄清问题
             next_questions = (
                 await clarification_engine.generate_clarification_questions(
@@ -1160,11 +1171,14 @@ async def clarify_requirement(request: ClarificationRequest) -> ClarificationRes
                 progress={
                     "overall_quality": overall_quality,
                     "goal_oriented_score": goal_oriented_score,
-                    "quality_threshold_met": overall_quality >= 0.8,
+                    "quality_threshold_met": overall_quality
+                    >= REQUIREMENT_QUALITY_CONFIG["quality_thresholds"][
+                        "overall_threshold"
+                    ],
                     "target_oriented": True,
                     "clarification_strategy": "quality_driven_dynamic",
                     "round_count": session_data["round_count"],
-                    "max_rounds": 5,
+                    "max_rounds": 7,
                     "reason": reason,
                 },
             )
@@ -1179,6 +1193,15 @@ async def clarify_requirement(request: ClarificationRequest) -> ClarificationRes
                 quality_analysis
             )
 
+            # 保存需求文档到文件
+            saved_filepath = await _save_requirement_document(
+                request.session_id,
+                quality_report,
+                session_data["requirement_text"],
+                overall_quality,
+                session_data["round_count"],
+            )
+
             # 完成澄清，清理会话数据
             if request.session_id in session_storage:
                 del session_storage[request.session_id]
@@ -1189,7 +1212,10 @@ async def clarify_requirement(request: ClarificationRequest) -> ClarificationRes
             )
 
             completion_reason = (
-                "quality_achieved" if overall_quality >= 0.8 else "max_rounds_reached"
+                "quality_achieved"
+                if overall_quality
+                >= REQUIREMENT_QUALITY_CONFIG["quality_thresholds"]["overall_threshold"]
+                else "max_rounds_reached"  # 提高到0.90
             )
 
             return ClarificationResponse(
@@ -1203,7 +1229,7 @@ async def clarify_requirement(request: ClarificationRequest) -> ClarificationRes
                 progress={
                     "overall_quality": overall_quality,
                     "goal_oriented_score": final_goal_score,
-                    "goal_achieved": overall_quality >= 0.8,
+                    "goal_achieved": overall_quality >= 0.82,  # 调整到0.82
                     "ready_for_specification": True,
                     "completion_reason": completion_reason,
                     "total_rounds": session_data["round_count"],
@@ -1289,3 +1315,71 @@ async def requirements_health_check():
         "available_engines": ["standard", "multi_dimensional"],
         "version": "1.0.0",
     }
+
+
+async def _save_requirement_document(
+    session_id: str,
+    quality_report: str,
+    final_requirement: str,
+    overall_quality: float,
+    total_rounds: int,
+) -> str:
+    """保存需求文档到文件系统"""
+    try:
+        # 确保输出目录存在
+        output_dir = "data/requirements"
+        os.makedirs(output_dir, exist_ok=True)
+
+        # 生成文件名
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"requirement_{session_id[:8]}_{timestamp}.md"
+        filepath = os.path.join(output_dir, filename)
+
+        # 生成完整的需求文档
+        document_content = f"""# 需求规格说明书
+
+## 📋 基本信息
+- **会话ID**: {session_id}
+- **生成时间**: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+- **质量评分**: {overall_quality:.2f}/1.0
+- **澄清轮次**: {total_rounds}轮
+        - **文档状态**: {"✅ 质量达标" if overall_quality >= 0.82 else "⚠️ 需要改进"}
+
+## 🎯 最终需求描述
+
+{final_requirement}
+
+## 📊 质量评估报告
+
+{quality_report}
+
+## 📝 文档说明
+
+本文档由OpenManus智能需求分析助手自动生成，基于多轮澄清和8维度质量评估。
+- 功能需求：系统必须实现的核心功能
+- 非功能需求：性能、安全、可用性等质量属性
+- 用户角色：系统涉及的所有用户类型及权限
+- 业务规则：系统运行的业务逻辑和约束
+- 约束条件：技术、资源、时间等限制
+- 验收标准：功能交付的验收条件
+- 集成需求：与其他系统的接口要求
+- 数据需求：数据存储、处理、安全要求
+
+## 🔗 下一步建议
+
+1. **技术选型**: 根据需求特点选择合适的技术栈
+2. **系统设计**: 进行详细的架构设计和模块划分
+3. **原型开发**: 制作可交互的原型验证需求
+4. **迭代优化**: 基于用户反馈持续改进需求
+"""
+
+        # 保存文件
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(document_content)
+
+        logger.info(f"📄 需求文档已保存: {filepath}")
+        return filepath
+
+    except Exception as e:
+        logger.error(f"保存需求文档失败: {e}")
+        return None
