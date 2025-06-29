@@ -5,12 +5,13 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
     plugins: [react()],
     server: {
+        port: 5173,  // 使用固定端口
         proxy: {
             '/api': {
-                target: 'http://127.0.0.1:8000', // 使用IPv4地址而不是localhost
+                target: 'http://localhost:8000',
                 changeOrigin: true,
                 secure: false,
-                // 保持/api前缀，因为后端路由就是/api/开头
+                ws: true,  // 支持WebSocket
             }
         }
     }

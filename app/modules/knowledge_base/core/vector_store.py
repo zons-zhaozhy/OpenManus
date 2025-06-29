@@ -1,26 +1,19 @@
 """
-向量存储服务 - 基于Chroma的高性能语义检索
+向量存储服务 - 基于Chroma的语义检索
 """
 
-import hashlib
-import json
-import os
+import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
+import chromadb
+from chromadb import Collection
+from chromadb.utils import embedding_functions
 from loguru import logger
 
-# 导入Chroma向量数据库
-try:
-    import chromadb
-    from chromadb.config import Settings
-    from chromadb.utils import embedding_functions
-
-    CHROMA_AVAILABLE = True
-except ImportError:
-    CHROMA_AVAILABLE = False
-    logger.warning("Chroma向量数据库未安装，将跳过向量存储功能")
+from .types import VectorSearchQuery, VectorSearchResult
 
 # 导入embedding模型
 try:
@@ -58,52 +51,50 @@ class VectorSearchQuery:
 class VectorStore:
     """向量存储服务 - 基于Chroma的语义检索"""
 
-    def __init__(self, storage_path: str = "data/knowledge_bases"):
+    def __init__(
+        self,
+        storage_path: str = "data/vector_store",
+        embedding_model: str = "paraphrase-multilingual-MiniLM-L12-v2",
+    ):
         """
-        初始化向量存储服务
+        初始化向量存储
 
         Args:
             storage_path: 存储路径
+            embedding_model: embedding模型名称
         """
-        if not CHROMA_AVAILABLE:
-            raise RuntimeError("Chroma向量数据库未安装，请运行: pip install chromadb")
-
         self.storage_path = Path(storage_path)
-        self.vector_path = self.storage_path / "vectors"
-        self.vector_path.mkdir(parents=True, exist_ok=True)
-
-        # 初始化Chroma客户端 - 使用新的配置方式
-        self.client = chromadb.PersistentClient(path=str(self.vector_path))
+        self.storage_path.mkdir(parents=True, exist_ok=True)
 
         # 初始化embedding函数
-        self._init_embedding_function()
+        self.embedding_model = None
+        try:
+            if not SENTENCE_TRANSFORMERS_AVAILABLE:
+                raise ImportError("SentenceTransformers package is not installed")
 
-        # 集合缓存
-        self.collections = {}
-
-        logger.info(f"向量存储服务初始化完成，存储路径: {self.vector_path}")
-
-    def _init_embedding_function(self):
-        """初始化embedding函数"""
-        if SENTENCE_TRANSFORMERS_AVAILABLE:
-            # 使用多语言模型
-            try:
-                self.embedding_model = SentenceTransformer(
-                    "paraphrase-multilingual-MiniLM-L12-v2"
+            logger.info(f"正在加载SentenceTransformers模型: {embedding_model}")
+            self.embedding_model = SentenceTransformer(embedding_model)
+            self.embedding_function = (
+                embedding_functions.SentenceTransformerEmbeddingFunction(
+                    model_name=embedding_model
                 )
-                self.embedding_function = None  # 使用自定义embedding
-                logger.info("使用SentenceTransformers多语言模型")
-            except Exception as e:
-                logger.warning(
-                    f"SentenceTransformers初始化失败: {e}，使用默认embedding"
-                )
-                self.embedding_function = embedding_functions.DefaultEmbeddingFunction()
-                self.embedding_model = None
-        else:
-            # 使用Chroma默认embedding
+            )
+            logger.info(f"SentenceTransformers模型加载成功: {embedding_model}")
+        except Exception as e:
+            logger.error(f"SentenceTransformers初始化失败: {e}")
+            logger.warning("使用默认embedding函数作为回退方案")
             self.embedding_function = embedding_functions.DefaultEmbeddingFunction()
-            self.embedding_model = None
-            logger.info("使用Chroma默认embedding函数")
+
+        # 初始化Chroma客户端
+        try:
+            self.client = chromadb.PersistentClient(path=str(self.storage_path))
+            logger.info("Chroma客户端初始化成功")
+        except Exception as e:
+            logger.error(f"Chroma客户端初始化失败: {e}")
+            raise
+
+        # 存储集合映射
+        self.collections: Dict[str, Collection] = {}
 
     def create_knowledge_base_collection(self, kb_id: str, kb_name: str) -> bool:
         """
@@ -146,72 +137,95 @@ class VectorStore:
             logger.error(f"创建知识库向量集合失败: {e}")
             return False
 
-    def add_documents(self, kb_id: str, documents: List[Dict[str, Any]]) -> bool:
+    def add_documents(
+        self, kb_id: str, documents: List[Dict[str, Any]], batch_size: int = 100
+    ) -> bool:
         """
-        添加文档到向量存储
+        添加文档到知识库集合
 
         Args:
             kb_id: 知识库ID
-            documents: 文档列表，每个文档包含id、content、metadata
+            documents: 文档列表，每个文档包含content和metadata
+            batch_size: 批处理大小
 
         Returns:
             bool: 添加是否成功
         """
         try:
+            # 验证输入
+            if not documents:
+                logger.warning("没有文档需要添加")
+                return True
+
+            # 获取或创建集合
             collection = self._get_collection(kb_id)
             if not collection:
-                logger.error(f"知识库集合不存在: {kb_id}")
-                return False
+                logger.info(f"知识库集合不存在，尝试创建: {kb_id}")
+                success = self.create_knowledge_base_collection(
+                    kb_id, f"Knowledge Base {kb_id}"
+                )
+                if not success:
+                    logger.error(f"创建知识库集合失败: {kb_id}")
+                    return False
+                collection = self._get_collection(kb_id)
+                if not collection:
+                    logger.error(f"无法获取新创建的知识库集合: {kb_id}")
+                    return False
 
             # 准备数据
             ids = []
             contents = []
             metadatas = []
-            embeddings = []
 
             for doc in documents:
-                doc_id = doc.get("id")
-                content = doc.get("content", "")
-                metadata = doc.get("metadata", {})
-
-                if not doc_id or not content:
-                    logger.warning(f"文档缺少必要字段: {doc}")
+                if not doc.get("content"):
+                    logger.warning(f"跳过空内容文档: {doc.get('id', 'unknown')}")
                     continue
 
+                doc_id = doc.get("id", str(uuid.uuid4()))
                 ids.append(doc_id)
-                contents.append(content)
-                metadatas.append(
-                    {**metadata, "kb_id": kb_id, "content_length": len(content)}
-                )
-
-                # 生成embedding
-                if self.embedding_model:
-                    embedding = self.embedding_model.encode(content).tolist()
-                    embeddings.append(embedding)
+                contents.append(doc["content"])
+                metadata = {
+                    "kb_id": kb_id,
+                    "doc_id": doc_id,
+                    "timestamp": datetime.now().isoformat(),
+                    **doc.get("metadata", {}),
+                }
+                metadatas.append(metadata)
 
             if not ids:
-                logger.warning("没有有效的文档可添加")
-                return False
+                logger.warning("没有有效的文档需要添加")
+                return True
 
-            # 添加到集合
-            if self.embedding_model:
-                collection.add(
-                    ids=ids,
-                    documents=contents,
-                    metadatas=metadatas,
-                    embeddings=embeddings,
-                )
-            else:
-                collection.add(ids=ids, documents=contents, metadatas=metadatas)
+            # 批量添加
+            total_added = 0
+            for i in range(0, len(ids), batch_size):
+                batch_ids = ids[i : i + batch_size]
+                batch_contents = contents[i : i + batch_size]
+                batch_metadatas = metadatas[i : i + batch_size]
 
-            logger.info(f"成功添加 {len(ids)} 个文档到知识库 {kb_id}")
+                try:
+                    collection.add(
+                        ids=batch_ids,
+                        documents=batch_contents,
+                        metadatas=batch_metadatas,
+                    )
+                    total_added += len(batch_ids)
+                    logger.info(f"成功添加 {len(batch_ids)} 个文档到知识库: {kb_id}")
+                except Exception as e:
+                    logger.error(f"批量添加文档失败: {e}")
+                    return False
+
+            logger.info(
+                f"文档添加完成，总共添加: {total_added} 个文档到知识库: {kb_id}"
+            )
             return True
 
         except Exception as e:
-            logger.error(f"添加文档到向量存储失败: {e}")
+            logger.error(f"添加文档失败: {kb_id}, 错误: {e}")
             return False
 
-    def search(self, query: VectorSearchQuery) -> List[SearchResult]:
+    def search(self, query: VectorSearchQuery) -> List[VectorSearchResult]:
         """
         执行语义搜索
 
@@ -219,12 +233,25 @@ class VectorStore:
             query: 搜索查询对象
 
         Returns:
-            List[SearchResult]: 搜索结果列表
+            List[VectorSearchResult]: 搜索结果列表
         """
         try:
             all_results = []
 
-            for kb_id in query.knowledge_base_ids:
+            # 验证查询
+            if not query.query_text.strip():
+                logger.warning("搜索查询文本为空")
+                return []
+
+            # 如果没有指定知识库ID，使用所有可用的知识库
+            kb_ids = query.knowledge_base_ids or list(self.collections.keys())
+            if not kb_ids:
+                logger.warning("没有可用的知识库集合")
+                return []
+
+            logger.info(f"开始搜索，查询文本: {query.query_text}, 知识库: {kb_ids}")
+
+            for kb_id in kb_ids:
                 collection = self._get_collection(kb_id)
                 if not collection:
                     logger.warning(f"知识库集合不存在: {kb_id}")
@@ -241,10 +268,15 @@ class VectorStore:
                     search_kwargs["where"] = query.filters
 
                 # 执行搜索
-                results = collection.query(**search_kwargs)
+                try:
+                    results = collection.query(**search_kwargs)
+                    logger.debug(f"知识库 {kb_id} 搜索结果: {results}")
+                except Exception as e:
+                    logger.warning(f"搜索知识库 {kb_id} 失败: {e}")
+                    continue
 
                 # 处理结果
-                if results and results.get("documents"):
+                if results and results.get("documents") and results["documents"][0]:
                     for i, (doc_id, document, metadata, distance) in enumerate(
                         zip(
                             results["ids"][0],
@@ -254,22 +286,25 @@ class VectorStore:
                         )
                     ):
                         # 转换距离为相似度分数 (1 - distance)
-                        score = max(0.0, 1.0 - distance)
+                        score = max(0.0, min(1.0, 1.0 - float(distance)))
 
                         if score >= query.min_score:
-                            result = SearchResult(
+                            result = VectorSearchResult(
                                 id=doc_id,
                                 content=document,
                                 score=score,
-                                metadata=metadata,
+                                metadata=metadata or {},
                                 knowledge_base_id=kb_id,
-                                document_id=metadata.get("document_id", ""),
                             )
                             all_results.append(result)
+                            logger.debug(f"添加搜索结果: {doc_id}, 分数: {score}")
 
-            # 按分数排序并返回top_k结果
+            # 按分数排序
             all_results.sort(key=lambda x: x.score, reverse=True)
-            return all_results[: query.top_k]
+            final_results = all_results[: query.top_k]
+
+            logger.info(f"搜索完成，找到 {len(final_results)} 个结果")
+            return final_results
 
         except Exception as e:
             logger.error(f"向量搜索失败: {e}")
@@ -388,7 +423,7 @@ class VectorStore:
 
     def get_collection_stats(self, kb_id: str) -> Dict[str, Any]:
         """
-        获取集合统计信息
+        获取知识库集合统计信息
 
         Args:
             kb_id: 知识库ID
@@ -399,34 +434,61 @@ class VectorStore:
         try:
             collection = self._get_collection(kb_id)
             if not collection:
-                return {}
+                return {
+                    "vector_count": 0,
+                    "total_chunks": 0,
+                    "last_updated": None,
+                }
 
+            # 获取集合信息
             count = collection.count()
+            metadata = collection.metadata or {}
 
             return {
-                "kb_id": kb_id,
-                "document_count": count,
-                "collection_name": f"kb_{kb_id}",
+                "vector_count": count,
+                "total_chunks": count,
+                "last_updated": metadata.get("last_updated"),
             }
 
         except Exception as e:
-            logger.error(f"获取集合统计信息失败: {e}")
-            return {}
+            logger.error(f"获取知识库集合统计信息失败: {kb_id}, 错误: {e}")
+            return {
+                "vector_count": 0,
+                "total_chunks": 0,
+                "last_updated": None,
+            }
 
-    def _get_collection(self, kb_id: str):
-        """获取知识库对应的向量集合"""
-        if kb_id in self.collections:
-            return self.collections[kb_id]
+    def _get_collection(self, kb_id: str) -> Optional[Collection]:
+        """
+        获取知识库集合
 
+        Args:
+            kb_id: 知识库ID
+
+        Returns:
+            Optional[Collection]: 知识库集合
+        """
         try:
             collection_name = f"kb_{kb_id}"
-            collection = self.client.get_collection(
-                name=collection_name, embedding_function=self.embedding_function
-            )
-            self.collections[kb_id] = collection
-            return collection
+
+            # 检查缓存
+            if kb_id in self.collections:
+                return self.collections[kb_id]
+
+            # 尝试获取已存在的集合
+            try:
+                collection = self.client.get_collection(
+                    name=collection_name,
+                    embedding_function=self.embedding_function,
+                )
+                self.collections[kb_id] = collection
+                return collection
+            except Exception:
+                logger.warning(f"知识库集合不存在: {kb_id}")
+                return None
+
         except Exception as e:
-            logger.error(f"获取向量集合失败: {e}")
+            logger.error(f"获取知识库集合失败: {kb_id}, 错误: {e}")
             return None
 
     def hybrid_search(
@@ -551,3 +613,76 @@ class VectorStore:
         except Exception as e:
             logger.error(f"查找相似文档失败: {e}")
             return []
+
+    def get_diagnostic_info(self) -> Dict[str, Any]:
+        """
+        获取向量存储的诊断信息
+
+        Returns:
+            Dict[str, Any]: 诊断信息
+        """
+        try:
+            info = {
+                "status": "healthy",
+                "embedding_function": {
+                    "type": self.embedding_function.__class__.__name__,
+                    "is_default": isinstance(
+                        self.embedding_function,
+                        embedding_functions.DefaultEmbeddingFunction,
+                    ),
+                },
+                "collections": {},
+                "total_documents": 0,
+                "errors": [],
+            }
+
+            # 检查所有集合
+            for kb_id in self.collections.keys():
+                collection = self._get_collection(kb_id)
+                if not collection:
+                    info["errors"].append(f"无法访问知识库集合: {kb_id}")
+                    continue
+
+                try:
+                    count = collection.count()
+                    peek = collection.peek()
+                    info["collections"][kb_id] = {
+                        "document_count": count,
+                        "has_documents": count > 0,
+                        "sample_document_ids": peek["ids"] if peek else [],
+                    }
+                    info["total_documents"] += count
+                except Exception as e:
+                    info["errors"].append(f"获取知识库 {kb_id} 统计信息失败: {e}")
+
+            # 检查存储路径
+            storage_info = {
+                "path": str(self.storage_path),
+                "exists": self.storage_path.exists(),
+                "is_dir": self.storage_path.is_dir(),
+                "size_bytes": sum(
+                    f.stat().st_size
+                    for f in self.storage_path.rglob("*")
+                    if f.is_file()
+                ),
+            }
+            info["storage"] = storage_info
+
+            # 设置状态
+            if info["errors"]:
+                info["status"] = "warning" if info["total_documents"] > 0 else "error"
+
+            return info
+
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e),
+                "embedding_function": {
+                    "type": "unknown",
+                    "is_default": True,
+                },
+                "collections": {},
+                "total_documents": 0,
+                "errors": [str(e)],
+            }

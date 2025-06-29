@@ -3,7 +3,8 @@ import { Link, useLocation } from 'react-router-dom';
 import {
     ChatBubbleLeftRightIcon,
     HomeIcon,
-    Cog6ToothIcon
+    Cog6ToothIcon,
+    CubeIcon
 } from '@heroicons/react/24/outline';
 
 interface LayoutProps {
@@ -50,6 +51,16 @@ export function Layout({ children }: LayoutProps) {
                         >
                             <ChatBubbleLeftRightIcon className="h-4 w-4" />
                             <span>需求分析</span>
+                        </Link>
+                        <Link
+                            to="/architecture"
+                            className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center space-x-2 ${location.pathname === '/architecture'
+                                ? 'bg-blue-600 text-white shadow-md'
+                                : 'text-gray-300 hover:text-white hover:bg-gray-700'
+                                }`}
+                        >
+                            <CubeIcon className="h-4 w-4" />
+                            <span>架构设计</span>
                         </Link>
                     </nav>
 

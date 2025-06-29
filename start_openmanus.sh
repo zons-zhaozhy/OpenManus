@@ -1,98 +1,120 @@
 #!/bin/bash
 
-# OpenManus AI软件公司一键启动脚本
-echo "🚀 启动 OpenManus AI软件公司..."
+# 设置颜色
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
 
-# 检查并杀死占用端口的进程
-echo "🔍 检查端口占用情况..."
+# 输出带颜色的消息
+echo_color() {
+    color=$1
+    message=$2
+    echo -e "${color}${message}${NC}"
+}
 
-# 检查后端端口 8000
-if lsof -i :8000 > /dev/null 2>&1; then
-    echo "⚠️  端口 8000 被占用，正在停止相关进程..."
-    lsof -ti :8000 | xargs kill -9 2>/dev/null
-    sleep 2
+# 检查Python版本
+echo_color $GREEN "🚀 启动 OpenManus AI软件公司..."
+echo_color $YELLOW "🐍 使用Python: $(which python)"
+python --version
+
+# 检查Node.js版本
+echo_color $YELLOW "📦 检查Node.js环境..."
+if ! command -v node &> /dev/null; then
+    echo_color $RED "❌ 未找到Node.js，请先安装Node.js"
+    exit 1
+fi
+echo_color $GREEN "✅ Node.js版本: $(node --version)"
+echo_color $GREEN "✅ npm版本: $(npm --version)"
+
+# 跳过Docker检查
+echo_color $YELLOW "⚠️  跳过Docker检查..."
+
+# 检查端口占用
+echo_color $YELLOW "🔍 检查端口占用情况..."
+if lsof -i:8000 > /dev/null; then
+    echo_color $YELLOW "⚠️  端口 8000 被占用，正在停止相关进程..."
+    kill $(lsof -t -i:8000)
 fi
 
-# 检查前端端口 5173-5180 (Vite会自动寻找可用端口)
-for port in {5173..5180}; do
-    if lsof -i :$port > /dev/null 2>&1; then
-        echo "⚠️  端口 $port 被占用，正在停止相关进程..."
-        lsof -ti :$port | xargs kill -9 2>/dev/null
-        sleep 1
-    fi
-done
+if lsof -i:5173 > /dev/null; then
+    echo_color $YELLOW "⚠️  端口 5173 被占用，正在停止相关进程..."
+    kill $(lsof -t -i:5173)
+fi
 
 # 启动后端服务
-echo "🔥 启动后端服务 (端口: 8000)..."
-nohup python run_web_server.py > backend.log 2>&1 &
-BACKEND_PID=$!
-echo "后端服务 PID: $BACKEND_PID"
+echo_color $YELLOW "🔥 启动后端服务 (端口: 8000)..."
+python run_mcp_server.py --transport http > logs/backend.log 2>&1 &
+backend_pid=$!
+echo "后端服务 PID: $backend_pid"
 
-# 等待后端启动
-echo "⏳ 等待后端服务启动..."
-sleep 5
+# 等待后端服务启动
+echo_color $YELLOW "⏳ 等待后端服务启动（最多等待120秒）..."
+start_time=$(date +%s)
+timeout=120
 
-# 检查后端服务是否成功启动
-if curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health | grep -q "200"; then
-    echo "✅ 后端服务启动成功 (http://localhost:8000)"
-else
-    echo "❌ 后端服务启动失败，请检查 backend.log"
-    echo "📄 显示后端日志最后10行："
-    tail -10 backend.log
-    exit 1
-fi
+while true; do
+    elapsed=$(($(date +%s) - start_time))
+    if [ $elapsed -ge $timeout ]; then
+        echo_color $RED "❌ 后端服务启动超时"
+        kill $backend_pid
+        exit 1
+    fi
 
-# 启动前端服务
-echo "🎨 启动前端服务..."
-cd app/web
-nohup npm run dev > ../../frontend.log 2>&1 &
-FRONTEND_PID=$!
-echo "前端服务 PID: $FRONTEND_PID"
-cd ../..
-
-# 等待前端启动
-echo "⏳ 等待前端服务启动..."
-sleep 8
-
-# 检查前端服务启动情况（检查多个可能的端口）
-FRONTEND_URL=""
-for port in {5173..5180}; do
-    if curl -s -o /dev/null -w "%{http_code}" http://localhost:$port | grep -q "200"; then
-        FRONTEND_URL="http://localhost:$port"
+    echo_color $YELLOW "   等待中... (${elapsed}s/${timeout}s) - 后端正在初始化"
+    if curl -s http://localhost:8000/docs > /dev/null; then
+        echo_color $GREEN "✅ 后端服务启动成功 (http://localhost:8000) - 耗时: ${elapsed}秒"
         break
     fi
+    sleep 5
 done
 
-if [ -n "$FRONTEND_URL" ]; then
-    echo "✅ 前端服务启动成功 ($FRONTEND_URL)"
-else
-    echo "❌ 前端服务启动失败，请检查 frontend.log"
-    echo "📄 显示前端日志最后10行："
-    tail -10 frontend.log
-    exit 1
+# 启动前端服务
+echo_color $YELLOW "🌐 启动前端服务 (端口: 5173)..."
+cd app/web
+if [ ! -d "node_modules" ]; then
+    echo_color $YELLOW "📦 安装前端依赖..."
+    npm install
 fi
+npm run dev > ../../logs/frontend.log 2>&1 &
+frontend_pid=$!
+cd ../..
 
-echo ""
-echo "🎉 OpenManus AI软件公司启动完成！"
-echo ""
-echo "📋 服务信息："
+# 等待前端服务启动
+echo_color $YELLOW "⏳ 等待前端服务启动（最多等待60秒）..."
+start_time=$(date +%s)
+timeout=60
+
+while true; do
+    elapsed=$(($(date +%s) - start_time))
+    if [ $elapsed -ge $timeout ]; then
+        echo_color $RED "❌ 前端服务启动超时"
+        kill $frontend_pid
+        kill $backend_pid
+        exit 1
+    fi
+
+    echo_color $YELLOW "   等待中... (${elapsed}s/${timeout}s) - 前端正在初始化"
+    if curl -s http://localhost:5173 > /dev/null; then
+        echo_color $GREEN "✅ 前端服务启动成功 (http://localhost:5173) - 耗时: ${elapsed}秒"
+        break
+    fi
+    sleep 5
+done
+
+# 保存进程ID
+echo "$backend_pid" > .openmanus_pids
+echo "$frontend_pid" >> .openmanus_pids
+
+# 输出启动成功信息
+echo_color $GREEN "🎉 OpenManus AI软件公司启动完成！"
+echo_color $YELLOW "📋 服务信息："
 echo "   后端服务: http://localhost:8000"
-echo "   前端界面: $FRONTEND_URL"
+echo "   前端服务: http://localhost:5173"
 echo "   API 文档: http://localhost:8000/docs"
-echo ""
-echo "📝 日志文件："
-echo "   后端日志: backend.log"
-echo "   前端日志: frontend.log"
-echo ""
-echo "⚡ 快速访问："
-echo "   在浏览器中打开: $FRONTEND_URL"
-echo ""
-echo "🛑 停止服务："
-echo "   kill $BACKEND_PID $FRONTEND_PID"
-echo ""
-
-# 保存进程ID到文件
-echo "BACKEND_PID=$BACKEND_PID" > .openmanus_pids
-echo "FRONTEND_PID=$FRONTEND_PID" >> .openmanus_pids
-
-echo "✨ 服务进程ID已保存到 .openmanus_pids 文件"
+echo_color $YELLOW "📝 日志文件："
+echo "   后端日志: logs/backend.log"
+echo "   前端日志: logs/frontend.log"
+echo_color $YELLOW "🛑 停止服务："
+echo "   kill $backend_pid $frontend_pid"
+echo_color $GREEN "✨ 服务进程ID已保存到 .openmanus_pids 文件"

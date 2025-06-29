@@ -1,5 +1,21 @@
 """
-知识库管理API接口
+知识库管理API接口 - API层
+
+职责：
+1. 定义知识库管理的REST API接口
+2. 处理HTTP请求和响应
+3. 参数验证和错误处理
+4. 调用modules/knowledge_base中的服务实现业务逻辑
+
+架构关系：
+- 本文件属于API层，负责接口定义和请求处理
+- 核心业务逻辑在modules/knowledge_base/中实现
+- 通过EnhancedKnowledgeService类调用底层功能
+
+这种分层设计使得：
+- API接口与业务逻辑分离
+- 业务逻辑可以独立测试和维护
+- 接口变更不影响核心功能实现
 """
 
 import asyncio

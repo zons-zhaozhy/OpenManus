@@ -1,458 +1,304 @@
-from datetime import datetime
+"""
+数据模型定义
+"""
+
+import time
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
 
-class Role(str, Enum):
-    """Message role options"""
+class ROLE_TYPE(str, Enum):
+    """角色类型枚举"""
 
-    SYSTEM = "system"
-    USER = "user"
-    ASSISTANT = "assistant"
-    TOOL = "tool"
-
-
-ROLE_VALUES = tuple(role.value for role in Role)
-ROLE_TYPE = Literal[ROLE_VALUES]  # type: ignore
-
-
-class ToolChoice(str, Enum):
-    """Tool choice options"""
-
-    NONE = "none"
-    AUTO = "auto"
-    REQUIRED = "required"
+    REQUIREMENT_CLARIFIER = "requirement_clarifier"  # 需求澄清者
+    BUSINESS_ANALYST = "business_analyst"  # 业务分析师
+    SYSTEM_ARCHITECT = "system_architect"  # 系统架构师
+    DATABASE_DESIGNER = "database_designer"  # 数据库设计师
+    TECH_SELECTOR = "tech_selector"  # 技术选择器
+    ARCHITECTURE_REVIEWER = "architecture_reviewer"  # 架构审查师
+    CODE_GENERATOR = "code_generator"  # 代码生成器
+    CODE_REVIEWER = "code_reviewer"  # 代码审查师
+    TESTER = "tester"  # 测试工程师
+    DEPLOYER = "deployer"  # 部署工程师
+    TECHNICAL_WRITER = "technical_writer" # 技术文档编写师
 
 
-TOOL_CHOICE_VALUES = tuple(choice.value for choice in ToolChoice)
-TOOL_CHOICE_TYPE = Literal[TOOL_CHOICE_VALUES]  # type: ignore
+class TOOL_CHOICE_TYPE(str, Enum):
+    """工具选择类型枚举"""
+
+    AUTO = "auto"  # 自动选择工具
+    NONE = "none"  # 不使用工具
+    REQUIRED = "required"  # 必须使用工具
+    CLARIFICATION = "clarification"  # 需求澄清
+    ANALYSIS = "analysis"  # 需求分析
+    MODELING = "modeling"  # 需求建模
+    VALIDATION = "validation"  # 需求验证
+    DOCUMENTATION = "documentation"  # 需求文档
+    REVIEW = "review"  # 需求评审
+    CUSTOM = "custom"  # 自定义工具
 
 
-class AgentState(Enum):
-    IDLE = "idle"
-    RUNNING = "running"
-    WAITING = "waiting"
-    FINISHED = "finished"
-    ERROR = "error"
+class AgentState(str, Enum):
+    """智能体状态枚举"""
+
+    IDLE = "idle"  # 空闲
+    INITIALIZING = "initializing"  # 初始化中
+    THINKING = "thinking"  # 思考中
+    WORKING = "working"  # 工作中
+    WAITING = "waiting"  # 等待中
+    COMPLETED = "completed"  # 完成
+    FAILED = "failed"  # 失败
+    TERMINATED = "terminated"  # 终止
+    FINISHED = "finished"  # 完成
+
+    # 工作流状态
+    CLARIFICATION = "clarification"  # 需求澄清
+    ANALYSIS = "analysis"  # 需求分析
+    MODELING = "modeling"  # 需求建模
+    VALIDATION = "validation"  # 需求验证
+    DOCUMENTATION = "documentation"  # 需求文档
+    REVIEW = "review"  # 需求评审
+    CUSTOM = "custom"  # 自定义工具
 
 
-class Function(BaseModel):
-    name: str
-    arguments: str
+class AgentAction(BaseModel):
+    """智能体动作模型"""
 
-
-class ToolCall(BaseModel):
-    """Represents a tool/function call in a message"""
-
-    id: str
-    type: str = "function"
-    function: Function
-
-
-class Message(BaseModel):
-    """Represents a chat message in the conversation"""
-
-    role: ROLE_TYPE = Field(...)  # type: ignore
-    content: Optional[str] = Field(default=None)
-    tool_calls: Optional[List[ToolCall]] = Field(default=None)
-    name: Optional[str] = Field(default=None)
-    tool_call_id: Optional[str] = Field(default=None)
-    base64_image: Optional[str] = Field(default=None)
-
-    def __add__(self, other) -> List["Message"]:
-        """支持 Message + list 或 Message + Message 的操作"""
-        if isinstance(other, list):
-            return [self] + other
-        elif isinstance(other, Message):
-            return [self, other]
-        else:
-            raise TypeError(
-                f"unsupported operand type(s) for +: '{type(self).__name__}' and '{type(other).__name__}'"
-            )
-
-    def __radd__(self, other) -> List["Message"]:
-        """支持 list + Message 的操作"""
-        if isinstance(other, list):
-            return other + [self]
-        else:
-            raise TypeError(
-                f"unsupported operand type(s) for +: '{type(other).__name__}' and '{type(self).__name__}'"
-            )
-
-    def to_dict(self) -> dict:
-        """Convert message to dictionary format"""
-        message = {"role": self.role}
-        if self.content is not None:
-            message["content"] = self.content
-        if self.tool_calls is not None:
-            message["tool_calls"] = [tool_call.dict() for tool_call in self.tool_calls]
-        if self.name is not None:
-            message["name"] = self.name
-        if self.tool_call_id is not None:
-            message["tool_call_id"] = self.tool_call_id
-        if self.base64_image is not None:
-            message["base64_image"] = self.base64_image
-        return message
-
-    @classmethod
-    def user_message(
-        cls, content: str, base64_image: Optional[str] = None
-    ) -> "Message":
-        """Create a user message"""
-        return cls(role=Role.USER, content=content, base64_image=base64_image)
-
-    @classmethod
-    def system_message(cls, content: str) -> "Message":
-        """Create a system message"""
-        return cls(role=Role.SYSTEM, content=content)
-
-    @classmethod
-    def assistant_message(
-        cls, content: Optional[str] = None, base64_image: Optional[str] = None
-    ) -> "Message":
-        """Create an assistant message"""
-        return cls(role=Role.ASSISTANT, content=content, base64_image=base64_image)
-
-    @classmethod
-    def tool_message(
-        cls, content: str, name, tool_call_id: str, base64_image: Optional[str] = None
-    ) -> "Message":
-        """Create a tool message"""
-        return cls(
-            role=Role.TOOL,
-            content=content,
-            name=name,
-            tool_call_id=tool_call_id,
-            base64_image=base64_image,
-        )
-
-    @classmethod
-    def from_tool_calls(
-        cls,
-        tool_calls: List[Any],
-        content: Union[str, List[str]] = "",
-        base64_image: Optional[str] = None,
-        **kwargs,
-    ):
-        """Create ToolCallsMessage from raw tool calls.
-
-        Args:
-            tool_calls: Raw tool calls from LLM
-            content: Optional message content
-            base64_image: Optional base64 encoded image
-        """
-        formatted_calls = [
-            {"id": call.id, "function": call.function.model_dump(), "type": "function"}
-            for call in tool_calls
-        ]
-        return cls(
-            role=Role.ASSISTANT,
-            content=content,
-            tool_calls=formatted_calls,
-            base64_image=base64_image,
-            **kwargs,
-        )
+    action_type: str = Field(..., description="动作类型")
+    tool_choice: Optional[TOOL_CHOICE_TYPE] = Field(
+        default=None, description="工具选择"
+    )
+    input_data: Optional[Dict] = Field(default=None, description="输入数据")
+    output_data: Optional[Dict] = Field(default=None, description="输出数据")
+    status: str = Field(default="pending", description="动作状态")
+    error: Optional[str] = Field(default=None, description="错误信息")
+    metadata: Optional[Dict] = Field(default=None, description="元数据")
+    timestamp: float = Field(..., description="时间戳")
 
 
 class Memory(BaseModel):
-    messages: List[Message] = Field(default_factory=list)
-    max_messages: int = Field(default=100)
+    """智能体记忆模型"""
 
-    def add_message(self, message: Message) -> None:
-        """Add a message to memory"""
+    key: str = Field(default="default_memory", description="记忆键")
+    value: Union[str, Dict, List] = Field(default_factory=dict, description="记忆值")
+    type: str = Field(default="general", description="记忆类型")
+    timestamp: float = Field(default_factory=time.time, description="时间戳")
+    metadata: Optional[Dict] = Field(default=None, description="元数据")
+    importance: float = Field(default=0.0, description="重要性分数")
+    expiry: Optional[float] = Field(default=None, description="过期时间")
+    tags: List[str] = Field(default_factory=list, description="标签列表")
+
+    # 消息存储
+    messages: List[Dict] = Field(default_factory=list, description="消息列表")
+
+    def add_message(self, message: Dict):
+        """添加消息到记忆中"""
         self.messages.append(message)
-        # Optional: Implement message limit
-        if len(self.messages) > self.max_messages:
-            self.messages = self.messages[-self.max_messages :]
+        self.timestamp = time.time()
 
-    def add_messages(self, messages: List[Message]) -> None:
-        """Add multiple messages to memory"""
-        self.messages.extend(messages)
-        # Optional: Implement message limit
-        if len(self.messages) > self.max_messages:
-            self.messages = self.messages[-self.max_messages :]
-
-    def clear(self) -> None:
-        """Clear all messages"""
-        self.messages.clear()
-
-    def get_recent_messages(self, n: int) -> List[Message]:
-        """Get n most recent messages"""
-        return self.messages[-n:]
-
-    def get_messages(self) -> List[dict]:
-        """Get messages in dict format for compatibility"""
-        return [msg.to_dict() for msg in self.messages]
-
-    def to_dict_list(self) -> List[dict]:
-        """Convert messages to list of dicts"""
-        return [msg.to_dict() for msg in self.messages]
+    def clear(self):
+        """清除所有消息"""
+        self.messages = []
+        self.timestamp = time.time()
 
 
-# 项目制管理数据模型
-class ProjectStatus(str, Enum):
-    """项目状态"""
+class HumanInputRequired(BaseModel):
+    """需要人类输入的模型"""
 
-    PLANNING = "planning"  # 规划中
-    ACTIVE = "active"  # 进行中
-    ON_HOLD = "on_hold"  # 暂停
-    COMPLETED = "completed"  # 已完成
-    CANCELLED = "cancelled"  # 已取消
-
-
-class ProjectStage(str, Enum):
-    """项目阶段 - 一个项目的完整生命周期"""
-
-    REQUIREMENTS_ANALYSIS = "requirements_analysis"  # 需求分析阶段
-    SYSTEM_ARCHITECTURE = "system_architecture"  # 系统架构设计阶段
-    DEVELOPMENT = "development"  # 开发实现阶段
-    TESTING = "testing"  # 测试验证阶段
-    DEPLOYMENT = "deployment"  # 部署上线阶段
-    MAINTENANCE = "maintenance"  # 维护运营阶段
+    prompt: str = Field(..., description="提示信息")
+    options: Optional[List[str]] = Field(default=None, description="可选选项")
+    context: Optional[Dict] = Field(default=None, description="上下文信息")
+    timeout: Optional[float] = Field(default=None, description="超时时间")
+    metadata: Optional[Dict] = Field(default=None, description="元数据")
 
 
-class ProjectType(str, Enum):
-    """项目类型 - 按业务领域分类"""
+class AgentResponse(BaseModel):
+    """智能体响应模型"""
 
-    WEB_APPLICATION = "web_application"  # Web应用系统
-    MOBILE_APPLICATION = "mobile_application"  # 移动应用
-    DESKTOP_APPLICATION = "desktop_application"  # 桌面应用
-    MANAGEMENT_SYSTEM = "management_system"  # 管理系统（如图书管理、库存管理）
-    E_COMMERCE = "e_commerce"  # 电商系统
-    CONTENT_MANAGEMENT = "content_management"  # 内容管理系统
-    DATA_ANALYTICS = "data_analytics"  # 数据分析系统
-    IOT_SYSTEM = "iot_system"  # 物联网系统
-    AI_ML_SYSTEM = "ai_ml_system"  # 人工智能/机器学习系统
-    ENTERPRISE_SOFTWARE = "enterprise_software"  # 企业软件
-    GAME_APPLICATION = "game_application"  # 游戏应用
-    OTHER = "other"  # 其他类型
-
-
-class Project(BaseModel):
-    """项目模型 - 所有助手工作的基础单元"""
-
-    # 基础信息
-    id: str = Field(..., description="项目唯一标识")
-    name: str = Field(..., description="项目名称")
-    description: str = Field(..., description="项目描述")
-
-    # 项目目标和背景（核心指引信息）
-    objective: str = Field(..., description="项目整体目标")
-    background: str = Field(..., description="项目背景情况")
-    success_criteria: List[str] = Field(default_factory=list, description="成功标准")
-    constraints: List[str] = Field(default_factory=list, description="约束条件")
-
-    # 项目管理信息
-    type: ProjectType = Field(..., description="项目类型")
-    status: ProjectStatus = Field(
-        default=ProjectStatus.PLANNING, description="项目状态"
+    content: str = Field(..., description="响应内容")
+    type: str = Field(..., description="响应类型")
+    confidence: float = Field(default=1.0, description="置信度")
+    metadata: Optional[Dict] = Field(default=None, description="元数据")
+    requires_human_input: bool = Field(default=False, description="是否需要人类输入")
+    human_input_details: Optional[HumanInputRequired] = Field(
+        default=None, description="人类输入详情"
     )
-    current_stage: ProjectStage = Field(
-        default=ProjectStage.REQUIREMENTS_ANALYSIS, description="当前阶段"
-    )
-    priority: int = Field(default=3, description="优先级 1-5，5最高")
-
-    # 时间信息
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
-    start_date: Optional[datetime] = None
-    target_end_date: Optional[datetime] = None
-    actual_end_date: Optional[datetime] = None
-
-    # 项目上下文（为智能体提供指引）
-    context: Dict[str, Any] = Field(default_factory=dict, description="项目上下文信息")
-    stakeholders: List[str] = Field(default_factory=list, description="项目干系人")
-
-    # 元数据
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="项目元数据")
+    next_actions: Optional[List[str]] = Field(default=None, description="下一步动作")
+    timestamp: float = Field(default_factory=time.time, description="时间戳")
 
 
-class ProjectCodebase(BaseModel):
-    """项目代码库 - 与项目一对一绑定"""
+class Message(BaseModel):
+    """消息模型"""
 
-    id: str = Field(..., description="代码库唯一标识")
-    project_id: str = Field(..., description="所属项目ID")
+    content: str = Field(..., description="消息内容")
+    type: str = Field(..., description="消息类型")
+    metadata: Optional[Dict] = Field(default=None, description="元数据")
+    timestamp: float = Field(default_factory=time.time, description="时间戳")
 
-    # 代码库基础信息
-    name: str = Field(..., description="代码库名称")
-    description: str = Field(..., description="代码库描述")
-    repository_url: Optional[str] = Field(None, description="代码仓库URL")
-    local_path: str = Field(..., description="本地代码路径")
+    @classmethod
+    def user_message(cls, content: str, base64_image: Optional[str] = None):
+        """创建用户消息"""
+        metadata = {"role": "user"}
+        if base64_image:
+            metadata["image"] = base64_image
+        return cls(content=content, type="user", metadata=metadata)
 
-    # 技术信息
-    main_language: str = Field(..., description="主要编程语言")
-    framework: Optional[str] = Field(None, description="主要框架")
-    dependencies: List[str] = Field(default_factory=list, description="主要依赖")
+    @classmethod
+    def system_message(cls, content: str):
+        """创建系统消息"""
+        return cls(content=content, type="system", metadata={"role": "system"})
 
-    # 代码分析信息
-    total_files: int = Field(default=0, description="文件总数")
-    code_files: int = Field(default=0, description="代码文件数")
-    complexity_score: float = Field(default=0.0, description="复杂度评分")
-    reusability_score: float = Field(default=0.0, description="可复用性评分")
+    @classmethod
+    def assistant_message(cls, content: str, base64_image: Optional[str] = None):
+        """创建助手消息"""
+        metadata = {"role": "assistant"}
+        if base64_image:
+            metadata["image"] = base64_image
+        return cls(content=content, type="assistant", metadata=metadata)
 
-    # 时间信息
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
-    last_analyzed_at: Optional[datetime] = None
+    @classmethod
+    def tool_message(
+        cls,
+        content: str,
+        tool_name: str = "",
+        tool_call_id: str = "",
+        base64_image: Optional[str] = None,
+        **kwargs
+    ):
+        """创建工具消息"""
+        metadata = {
+            "role": "tool",
+            "tool_name": tool_name,
+            "tool_call_id": tool_call_id,
+            **kwargs,
+        }
+        if base64_image:
+            metadata["image"] = base64_image
+        return cls(content=content, type="tool", metadata=metadata)
 
-    # 分析结果缓存
-    analysis_cache: Dict[str, Any] = Field(
-        default_factory=dict, description="分析结果缓存"
-    )
-
-
-class KnowledgeBaseType(str, Enum):
-    """知识库类型"""
-
-    DOMAIN_KNOWLEDGE = "domain_knowledge"  # 领域知识
-    TECHNICAL_PATTERNS = "technical_patterns"  # 技术模式
-    BEST_PRACTICES = "best_practices"  # 最佳实践
-    REQUIREMENTS_TEMPLATES = "requirements_templates"  # 需求模板
-    ARCHITECTURE_PATTERNS = "architecture_patterns"  # 架构模式
-
-
-class KnowledgeBase(BaseModel):
-    """知识库模型 - 可挂载到多个项目"""
-
-    id: str = Field(..., description="知识库唯一标识")
-    name: str = Field(..., description="知识库名称")
-    description: str = Field(..., description="知识库描述")
-    type: KnowledgeBaseType = Field(..., description="知识库类型")
-
-    # 知识库内容
-    content: Dict[str, Any] = Field(default_factory=dict, description="知识库内容")
-    patterns: List[Dict[str, Any]] = Field(default_factory=list, description="知识模式")
-    templates: List[Dict[str, Any]] = Field(
-        default_factory=list, description="模板集合"
-    )
-
-    # 版本信息
-    version: str = Field(default="1.0.0", description="知识库版本")
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
-
-    # 使用统计
-    usage_count: int = Field(default=0, description="使用次数")
-    project_mount_count: int = Field(default=0, description="项目挂载数")
+    @classmethod
+    def from_tool_calls(cls, content: str, tool_calls: List):
+        """从工具调用创建消息"""
+        return cls(
+            content=content,
+            type="assistant",
+            metadata={"role": "assistant", "tool_calls": tool_calls},
+        )
 
 
-class ProjectKnowledgeMount(BaseModel):
-    """项目知识库挂载关系 - 多对多关系"""
+class ClarificationRequest(BaseModel):
+    """澄清请求"""
 
-    id: str = Field(..., description="挂载关系唯一标识")
-    project_id: str = Field(..., description="项目ID")
-    knowledge_base_id: str = Field(..., description="知识库ID")
+    session_id: Optional[str] = Field(default=None, description="会话ID")
+    requirement: str = Field(..., description="需求内容")
+    context: Optional[Dict] = Field(default=None, description="上下文信息")
 
-    # 挂载配置
-    mount_type: str = Field(
-        default="read_only", description="挂载类型：read_only, read_write"
-    )
-    priority: int = Field(default=3, description="优先级 1-5，5最高")
-    is_active: bool = Field(default=True, description="是否启用")
 
-    # 挂载时间
-    mounted_at: datetime = Field(default_factory=datetime.now)
-    last_used_at: Optional[datetime] = None
+class ClarificationAnswerRequest(BaseModel):
+    """澄清回答请求"""
 
-    # 使用统计
-    usage_count: int = Field(default=0, description="使用次数")
+    session_id: Optional[str] = Field(default=None, description="会话ID")
+    requirement: str = Field(..., description="需求内容")
+    context: Optional[Dict] = Field(default=None, description="上下文信息")
+    question: str = Field(..., description="问题")
+    answer: str = Field(..., description="回答")
 
-    # 挂载配置
-    config: Dict[str, Any] = Field(default_factory=dict, description="挂载配置")
+
+class ClarificationResponse(BaseModel):
+    """澄清响应"""
+
+    questions: List[str] = Field(default_factory=list, description="澄清问题列表")
+    status: str = Field(..., description="状态")
+    context: Optional[Dict] = Field(default=None, description="上下文信息")
+    error: Optional[str] = Field(default=None, description="错误信息")
+
+
+class SessionStatus(BaseModel):
+    """会话状态"""
+
+    session_id: str = Field(..., description="会话ID")
+    last_activity: str = Field(..., description="最后活动时间")
+    is_complete: bool = Field(..., description="是否完成")
+    questions_count: int = Field(..., description="问题数量")
+    current_state: str = Field(..., description="当前状态")
+
+
+class ToolCall(BaseModel):
+    """工具调用模型"""
+
+    id: str = Field(..., description="调用ID")
+    function: Dict = Field(..., description="函数信息")
+    tool_name: Optional[str] = Field(default=None, description="工具名称")
+    tool_args: Optional[Dict] = Field(default=None, description="工具参数")
+    tool_result: Optional[Any] = Field(default=None, description="工具结果")
+    status: str = Field(default="pending", description="调用状态")
+    error: Optional[str] = Field(default=None, description="错误信息")
+    timestamp: float = Field(default_factory=time.time, description="时间戳")
+
+
+class ToolChoice(str, Enum):
+    """工具选择枚举"""
+
+    AUTO = "auto"  # 自动选择工具
+    NONE = "none"  # 不使用工具
+    REQUIRED = "required"  # 必须使用工具
+
+
+class ToolChoiceModel(BaseModel):
+    """工具选择模型"""
+
+    tool_type: TOOL_CHOICE_TYPE = Field(..., description="工具类型")
+    tool_name: str = Field(..., description="工具名称")
+    tool_description: Optional[str] = Field(default=None, description="工具描述")
+    parameters: Optional[Dict] = Field(default=None, description="工具参数")
+    priority: int = Field(default=0, description="优先级")
+    metadata: Optional[Dict] = Field(default=None, description="元数据")
 
 
 class ProjectContext(BaseModel):
-    """项目上下文 - 为智能体提供项目指引"""
+    """项目上下文模型"""
 
     project_id: str = Field(..., description="项目ID")
-
-    # 核心指引信息
-    objective_guidance: str = Field(..., description="目标指引")
-    background_context: str = Field(..., description="背景上下文")
-    success_criteria: List[str] = Field(default_factory=list, description="成功标准")
-    constraints: List[str] = Field(default_factory=list, description="约束条件")
-
-    # 当前阶段信息
-    current_stage: str = Field(..., description="当前阶段")
-    stage_objectives: List[str] = Field(default_factory=list, description="阶段目标")
-
-    # 可用资源
-    available_knowledge_bases: List[str] = Field(
-        default_factory=list, description="可用知识库"
-    )
-    codebase_info: Optional[Dict[str, Any]] = Field(None, description="代码库信息")
-
-    # 智能体协作信息
-    active_agents: List[str] = Field(default_factory=list, description="活跃智能体")
-    shared_memory: Dict[str, Any] = Field(default_factory=dict, description="共享记忆")
-
-    # 时间信息
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    project_name: str = Field(..., description="项目名称")
+    project_description: Optional[str] = Field(default=None, description="项目描述")
+    project_type: Optional[str] = Field(default=None, description="项目类型")
+    client_info: Optional[Dict] = Field(default=None, description="客户信息")
+    team_info: Optional[Dict] = Field(default=None, description="团队信息")
+    requirements: Optional[List[Dict]] = Field(default=None, description="需求列表")
+    constraints: Optional[List[str]] = Field(default=None, description="约束条件")
+    timeline: Optional[Dict] = Field(default=None, description="时间线")
+    budget: Optional[Dict] = Field(default=None, description="预算")
+    stakeholders: Optional[List[Dict]] = Field(default=None, description="利益相关者")
+    documents: Optional[List[Dict]] = Field(default=None, description="文档列表")
+    metadata: Optional[Dict] = Field(default=None, description="元数据")
+    created_at: float = Field(default_factory=time.time, description="创建时间")
+    updated_at: float = Field(default_factory=time.time, description="更新时间")
 
 
-class ProjectSession(BaseModel):
-    """项目会话 - 具体的工作会话"""
-
-    id: str = Field(..., description="会话ID")
-    project_id: str = Field(..., description="项目ID")
-
-    # 会话信息
-    name: str = Field(..., description="会话名称")
-    description: str = Field(..., description="会话描述")
-    session_type: str = Field(..., description="会话类型")
-
-    # 会话状态
-    status: str = Field(default="active", description="会话状态")
-    current_agent: Optional[str] = Field(None, description="当前活跃智能体")
-
-    # 会话数据
-    context: Dict[str, Any] = Field(default_factory=dict, description="会话上下文")
-    history: List[Dict[str, Any]] = Field(default_factory=list, description="会话历史")
-    results: Dict[str, Any] = Field(default_factory=dict, description="会话结果")
-
-    # 时间信息
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
-
-
-# 需求分析相关模型
 class RequirementAnalysisRequest(BaseModel):
     """需求分析请求模型"""
 
-    content: str = Field(..., description="需求内容")
-    domain: Optional[str] = Field(None, description="业务领域")
-    priority: Optional[str] = Field(None, description="优先级")
-    session_id: Optional[str] = Field(None, description="会话ID")
-    context: Optional[Dict[str, Any]] = Field(
-        default_factory=dict, description="上下文信息"
+    requirement_text: str = Field(..., description="需求文本")
+    session_id: Optional[str] = Field(default=None, description="会话ID")
+    project_context: Optional[ProjectContext] = Field(
+        default=None, description="项目上下文"
     )
+    analysis_type: Optional[str] = Field(
+        default="comprehensive", description="分析类型"
+    )
+    priority: Optional[int] = Field(default=0, description="优先级")
+    metadata: Optional[Dict] = Field(default=None, description="元数据")
 
 
 class RequirementAnalysisResponse(BaseModel):
     """需求分析响应模型"""
 
-    original_content: str = Field(..., description="原始需求内容")
-    clarified_requirements: str = Field(..., description="澄清后的需求")
-    technical_feasibility: Dict[str, Any] = Field(
-        default_factory=dict, description="技术可行性评估"
-    )
-    recommendations: List[str] = Field(default_factory=list, description="建议清单")
-    knowledge_insights: List[Dict[str, Any]] = Field(
-        default_factory=list, description="知识库洞察"
-    )
-    code_insights: List[Dict[str, Any]] = Field(
-        default_factory=list, description="代码库洞察"
-    )
-    confidence_score: float = Field(default=0.0, description="置信度评分")
-    analysis_metadata: Dict[str, Any] = Field(
-        default_factory=dict, description="分析元数据"
-    )
-
-    # 时间信息
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    session_id: str = Field(..., description="会话ID")
+    status: str = Field(..., description="状态")
+    message: str = Field(..., description="消息")
+    result: Optional[Dict] = Field(default=None, description="分析结果")
+    error: Optional[str] = Field(default=None, description="错误信息")
+    metadata: Optional[Dict] = Field(default=None, description="元数据")
+    timestamp: float = Field(default_factory=time.time, description="时间戳")

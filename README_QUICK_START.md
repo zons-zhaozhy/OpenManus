@@ -60,7 +60,7 @@ npm run dev
 ```
 
 3. **访问系统**
-- 前端: http://localhost:5176
+- 前端: http://localhost:5173
 - 后端API: http://localhost:8000
 
 ### 4. 核心功能验证
@@ -72,7 +72,7 @@ npm run dev
 4. 系统将启动四大智能体协作分析
 
 #### 4.2 知识库功能
-1. 访问设置页面：http://localhost:5176/settings
+1. 访问设置页面：http://localhost:5173/settings
 2. 查看预装的知识库（需求分析模板、最佳实践）
 3. 可以上传文档或添加代码库
 
@@ -123,7 +123,7 @@ npm run dev
    - 查看后端日志：`tail -f app/logs/app.log`
 
 2. **前端无法访问**
-   - 确认端口5176未被占用
+   - 确认端口5173未被占用
    - 检查npm依赖：`npm install`
 
 3. **知识库为空**

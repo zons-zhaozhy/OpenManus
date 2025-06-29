@@ -6,7 +6,7 @@ from typing import Dict, Optional, Set
 import docker
 from docker.errors import APIError, ImageNotFound
 
-from app.config import SandboxSettings
+from app.config import SandboxSettings, config
 from app.logger import logger
 from app.sandbox.core.sandbox import DockerSandbox
 
@@ -59,8 +59,11 @@ class SandboxManager:
         self._cleanup_task: Optional[asyncio.Task] = None
         self._is_shutting_down = False
 
-        # Start automatic cleanup
-        self.start_cleanup_task()
+        # Start automatic cleanup (only if enabled in config)
+        if config.performance_config.enable_sandbox_cleanup:
+            self.start_cleanup_task()
+        else:
+            logger.info("🚫 沙盒自动清理已禁用（开发模式）")
 
     async def ensure_image(self, image: str) -> bool:
         """Ensures Docker image is available.
@@ -311,3 +314,40 @@ class SandboxManager:
             "cleanup_interval": self.cleanup_interval,
             "is_shutting_down": self._is_shutting_down,
         }
+
+
+# 全局沙盒管理器实例
+_global_sandbox_manager: Optional[SandboxManager] = None
+
+
+def get_sandbox_manager() -> SandboxManager:
+    """获取全局沙盒管理器实例
+
+    Returns:
+        SandboxManager: 全局沙盒管理器实例
+    """
+    global _global_sandbox_manager
+
+    if _global_sandbox_manager is None:
+        # 使用默认配置创建沙盒管理器
+        from app.config import config
+
+        _global_sandbox_manager = SandboxManager(
+            max_sandboxes=(
+                config.sandbox_config.max_sandboxes
+                if hasattr(config, "sandbox_config")
+                else 10
+            ),
+            idle_timeout=3600,  # 1小时超时
+            cleanup_interval=300,  # 5分钟清理间隔
+        )
+
+        logger.info("🔧 全局沙盒管理器已初始化")
+
+    return _global_sandbox_manager
+
+
+def reset_sandbox_manager() -> None:
+    """重置全局沙盒管理器实例（主要用于测试）"""
+    global _global_sandbox_manager
+    _global_sandbox_manager = None

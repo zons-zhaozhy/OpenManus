@@ -9,7 +9,7 @@ import re
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from loguru import logger
 
@@ -156,7 +156,12 @@ class StructureAnalyzer:
             comment_lines = sum(1 for line in lines if line.strip().startswith("#"))
 
             # 解析AST
-            tree = ast.parse(content)
+            try:
+                tree = ast.parse(content)
+            except SyntaxError as e:
+                logger.warning(f"解析Python文件失败 {file_path}: {e}")
+                # 回退到通用分析
+                return self._analyze_generic_file(file_path)
 
             for node in ast.walk(tree):
                 if isinstance(node, ast.FunctionDef):
@@ -185,7 +190,7 @@ class StructureAnalyzer:
                     )
 
         except Exception as e:
-            logger.warning(f"解析Python文件失败 {file_path}: {e}")
+            logger.warning(f"分析Python文件失败 {file_path}: {e}")
             # 回退到通用分析
             return self._analyze_generic_file(file_path)
 
@@ -310,6 +315,7 @@ class CodeAnalyzer:
         """初始化代码分析器"""
         self.structure_analyzer = StructureAnalyzer()
         self.tech_stack_patterns = self._load_tech_stack_patterns()
+        self.analysis_cache = {}
 
     def analyze_codebase(self, codebase_id: str, root_path: str) -> AnalysisResult:
         """
@@ -324,80 +330,151 @@ class CodeAnalyzer:
         """
         logger.info(f"开始分析代码库: {root_path}")
 
-        # 结构分析
-        components, metrics, languages = self.structure_analyzer.analyze_structure(
-            root_path
-        )
+        try:
+            # 检查缓存
+            cache_key = f"{codebase_id}:{root_path}"
+            if cache_key in self.analysis_cache:
+                cached_result = self.analysis_cache[cache_key]
+                if (
+                    datetime.now() - cached_result["timestamp"]
+                ).total_seconds() < 300:  # 5分钟缓存
+                    logger.info("使用缓存的分析结果")
+                    return cached_result["result"]
 
-        # 技术栈识别
-        tech_stacks = self._identify_tech_stacks(root_path, languages)
+            # 结构分析
+            components, metrics, languages = self.structure_analyzer.analyze_structure(
+                root_path
+            )
 
-        # 文件统计
-        file_count = self._count_files(root_path)
-        total_lines = metrics.lines_of_code
+            # 技术栈识别
+            tech_stacks = self._identify_tech_stacks(root_path, languages)
 
-        # 工作量估算
-        estimated_effort = self._estimate_workload(components, metrics)
+            # 文件统计
+            file_count = self._count_files(root_path)
+            total_lines = metrics.lines_of_code
 
-        # 可复用性评分
-        reusability_score = self._calculate_reusability_score(components, metrics)
+            # 工作量估算
+            estimated_effort = self._estimate_workload(components, metrics)
 
-        # 生成建议
-        suggestions = self._generate_suggestions(components, metrics, tech_stacks)
+            # 可复用性评分
+            reusability_score = self._calculate_reusability_score(components, metrics)
 
-        result = AnalysisResult(
-            codebase_id=codebase_id,
-            analysis_time=datetime.now(),
-            tech_stacks=tech_stacks,
-            components=components,
-            metrics=metrics,
-            file_count=file_count,
-            total_lines=total_lines,
-            languages=languages,
-            estimated_effort_days=estimated_effort,
-            reusability_score=reusability_score,
-            suggestions=suggestions,
-        )
+            # 生成建议
+            suggestions = self._generate_suggestions(components, metrics, tech_stacks)
 
-        logger.info(f"代码库分析完成: {len(components)} 个组件, {file_count} 个文件")
-        return result
+            # 质量问题分析
+            quality_issues = self._analyze_quality_issues(components, metrics)
 
-    def _load_tech_stack_patterns(self) -> Dict:
-        """加载技术栈识别模式"""
+            result = AnalysisResult(
+                components=components,
+                metrics=metrics,
+                languages=languages,
+                tech_stacks=tech_stacks,
+                file_count=file_count,
+                total_lines=total_lines,
+                estimated_effort=estimated_effort,
+                reusability_score=reusability_score,
+                suggestions=suggestions,
+                quality_issues=quality_issues,
+            )
+
+            # 更新缓存
+            self.analysis_cache[cache_key] = {
+                "result": result,
+                "timestamp": datetime.now(),
+            }
+
+            logger.info("代码库分析完成")
+            return result
+
+        except Exception as e:
+            logger.error(f"代码库分析失败: {str(e)}")
+            raise
+
+    def _analyze_quality_issues(
+        self, components: List[CodeComponent], metrics: CodeMetrics
+    ) -> List[QualityIssue]:
+        """分析质量问题"""
+        issues = []
+
+        # 检查复杂度过高的组件
+        for component in components:
+            if component.complexity == CodeComplexity.HIGH:
+                issues.append(
+                    QualityIssue(
+                        title=f"复杂度过高: {component.name}",
+                        description=f"组件 {component.name} 的复杂度过高，建议重构拆分",
+                        severity="HIGH",
+                        file_path=component.file_path,
+                        line_number=component.start_line,
+                    )
+                )
+
+        # 检查注释率
+        if metrics.lines_of_code > 0:
+            comment_ratio = metrics.lines_of_comments / metrics.lines_of_code
+            if comment_ratio < 0.1:  # 注释率低于10%
+                issues.append(
+                    QualityIssue(
+                        title="注释率过低",
+                        description="代码注释率低于10%，建议增加必要的注释",
+                        severity="MEDIUM",
+                    )
+                )
+
+        # 检查文件大小
+        for component in components:
+            if component.end_line - component.start_line > 500:  # 文件超过500行
+                issues.append(
+                    QualityIssue(
+                        title=f"文件过大: {component.name}",
+                        description=f"文件 {component.name} 超过500行，建议拆分",
+                        severity="MEDIUM",
+                        file_path=component.file_path,
+                        line_number=component.start_line,
+                    )
+                )
+
+        return issues
+
+    def _load_tech_stack_patterns(self) -> Dict[str, List[str]]:
+        """加载技术栈模式"""
         return {
-            "package.json": [
-                (r'"react":', TechStack("React", type=TechStackType.FRONTEND)),
-                (r'"vue":', TechStack("Vue.js", type=TechStackType.FRONTEND)),
-                (r'"angular":', TechStack("Angular", type=TechStackType.FRONTEND)),
-                (r'"express":', TechStack("Express.js", type=TechStackType.BACKEND)),
-                (r'"next":', TechStack("Next.js", type=TechStackType.FRONTEND)),
-                (
-                    r'"typescript":',
-                    TechStack("TypeScript", type=TechStackType.FRONTEND),
-                ),
+            "frontend": [
+                "react",
+                "vue",
+                "angular",
+                "webpack",
+                "babel",
+                "typescript",
+                "sass",
+                "less",
             ],
-            "requirements.txt": [
-                (r"django", TechStack("Django", type=TechStackType.BACKEND)),
-                (r"flask", TechStack("Flask", type=TechStackType.BACKEND)),
-                (r"fastapi", TechStack("FastAPI", type=TechStackType.BACKEND)),
-                (r"pandas", TechStack("Pandas", type=TechStackType.AI_ML)),
-                (r"numpy", TechStack("NumPy", type=TechStackType.AI_ML)),
-                (r"tensorflow", TechStack("TensorFlow", type=TechStackType.AI_ML)),
-                (r"pytorch", TechStack("PyTorch", type=TechStackType.AI_ML)),
+            "backend": [
+                "django",
+                "flask",
+                "fastapi",
+                "express",
+                "spring",
+                "laravel",
+                "rails",
             ],
-            "pom.xml": [
-                (r"spring-boot", TechStack("Spring Boot", type=TechStackType.BACKEND)),
-                (
-                    r"spring-framework",
-                    TechStack("Spring Framework", type=TechStackType.BACKEND),
-                ),
+            "database": [
+                "mysql",
+                "postgresql",
+                "mongodb",
+                "redis",
+                "elasticsearch",
+                "sqlite",
             ],
-            "Gemfile": [
-                (r"rails", TechStack("Ruby on Rails", type=TechStackType.BACKEND)),
-            ],
-            "go.mod": [
-                (r"gin-gonic/gin", TechStack("Gin", type=TechStackType.BACKEND)),
-                (r"gorilla/mux", TechStack("Gorilla Mux", type=TechStackType.BACKEND)),
+            "testing": ["pytest", "jest", "mocha", "junit", "selenium", "cypress"],
+            "deployment": [
+                "docker",
+                "kubernetes",
+                "jenkins",
+                "travis",
+                "gitlab-ci",
+                "github-actions",
             ],
         }
 
@@ -407,107 +484,121 @@ class CodeAnalyzer:
         """识别技术栈"""
         tech_stacks = []
 
-        # 基于语言的技术栈
-        for language, line_count in languages.items():
-            confidence = min(1.0, line_count / 1000)  # 简化的置信度计算
-            tech_stacks.append(
-                TechStack(
-                    name=language.title(),
-                    type=self._get_language_type(language),
-                    confidence=confidence,
-                    description=f"主要编程语言，代码行数: {line_count}",
-                )
-            )
-
-        # 基于配置文件的技术栈
-        for filename, patterns in self.tech_stack_patterns.items():
-            config_path = os.path.join(root_path, filename)
-            if os.path.exists(config_path):
+        # 根据文件内容识别技术栈
+        for root, _, files in os.walk(root_path):
+            for file in files:
+                file_path = os.path.join(root, file)
                 try:
-                    with open(config_path, "r", encoding="utf-8") as f:
-                        content = f.read()
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        content = f.read().lower()
 
-                    for pattern, tech_stack in patterns:
-                        if re.search(pattern, content, re.IGNORECASE):
-                            tech_stack.confidence = 0.9
-                            tech_stack.used_files = [filename]
-                            tech_stacks.append(tech_stack)
+                    # 检查每个技术栈类型
+                    for stack_type, patterns in self.tech_stack_patterns.items():
+                        for pattern in patterns:
+                            if pattern in content:
+                                tech_stacks.append(
+                                    TechStack(
+                                        name=pattern,
+                                        type=TechStackType(stack_type.upper()),
+                                        confidence=0.8,
+                                    )
+                                )
+                except Exception:
+                    continue
 
-                except Exception as e:
-                    logger.warning(f"读取配置文件失败 {config_path}: {e}")
+        # 根据语言分布添加主要语言
+        for language, lines in languages.items():
+            if lines > 100:  # 超过100行的语言被认为是主要语言
+                tech_stacks.append(
+                    TechStack(
+                        name=language,
+                        type=TechStackType.LANGUAGE,
+                        confidence=1.0,
+                    )
+                )
 
-        return tech_stacks
-
-    def _get_language_type(self, language: str) -> TechStackType:
-        """获取语言类型"""
-        frontend_languages = {"javascript", "typescript", "html", "css"}
-        backend_languages = {"python", "java", "go", "ruby", "php", "csharp"}
-
-        if language.lower() in frontend_languages:
-            return TechStackType.FRONTEND
-        elif language.lower() in backend_languages:
-            return TechStackType.BACKEND
-        else:
-            return TechStackType.OTHER
+        return list(set(tech_stacks))  # 去重
 
     def _count_files(self, root_path: str) -> int:
         """统计文件数量"""
-        file_count = 0
-        for root, dirs, files in os.walk(root_path):
-            # 跳过非代码目录
-            dirs[:] = [
-                d
-                for d in dirs
-                if d not in {".git", ".svn", "node_modules", "__pycache__"}
-            ]
-            file_count += len(files)
-        return file_count
+        count = 0
+        for root, _, files in os.walk(root_path):
+            # 跳过常见的非代码目录
+            if any(
+                part in root
+                for part in [
+                    ".git",
+                    "node_modules",
+                    "__pycache__",
+                    "venv",
+                    "dist",
+                    "build",
+                ]
+            ):
+                continue
+            count += len(files)
+        return count
 
     def _estimate_workload(
         self, components: List[CodeComponent], metrics: CodeMetrics
     ) -> float:
-        """估算工作量（天）"""
-        # 简化的工作量估算模型
-        # 基于代码行数、复杂度等因素
+        """估算工作量（人天）"""
+        base_effort = metrics.lines_of_code / 100  # 每100行代码1人天
 
-        base_days = metrics.lines_of_code / 200  # 假设每天能写200行代码
-
-        # 复杂度调整
+        # 根据复杂度调整
         complexity_factor = 1.0
-        for component in components:
-            if component.complexity == CodeComplexity.HIGH:
-                complexity_factor += 0.1
-            elif component.complexity == CodeComplexity.VERY_HIGH:
-                complexity_factor += 0.2
+        high_complexity_count = sum(
+            1 for c in components if c.complexity == CodeComplexity.HIGH
+        )
+        if high_complexity_count > 0:
+            complexity_factor += 0.2 * high_complexity_count
 
-        estimated_days = base_days * complexity_factor
-        return round(estimated_days, 1)
+        # 根据技术栈数量调整
+        tech_stack_factor = 1.0 + len(set(c.type for c in components)) * 0.1
+
+        # 根据维护性指数调整
+        maintainability_factor = (
+            2.0 - metrics.maintainability_index / 100
+            if metrics.maintainability_index > 0
+            else 2.0
+        )
+
+        return (
+            base_effort * complexity_factor * tech_stack_factor * maintainability_factor
+        )
 
     def _calculate_reusability_score(
         self, components: List[CodeComponent], metrics: CodeMetrics
     ) -> float:
-        """计算可复用性评分"""
-        score = 50.0  # 基础分
+        """计算可复用性评分（0-100）"""
+        # 基础分数
+        base_score = 70
 
-        # 注释率影响
-        if metrics.lines_of_code > 0:
-            comment_ratio = metrics.lines_of_comments / metrics.lines_of_code
-            score += comment_ratio * 30  # 注释率贡献最多30分
+        # 根据组件数量和复杂度调整
+        component_score = 0
+        for component in components:
+            if component.complexity == CodeComplexity.LOW:
+                component_score += 5
+            elif component.complexity == CodeComplexity.MEDIUM:
+                component_score += 3
+            else:
+                component_score -= 2
 
-        # 模块化程度（函数和类的比例）
-        total_components = len(components)
-        if total_components > 0:
-            modular_components = len(
-                [
-                    c
-                    for c in components
-                    if c.type in {ComponentType.FUNCTION, ComponentType.CLASS}
-                ]
-            )
-            modular_ratio = modular_components / total_components
-            score += modular_ratio * 20  # 模块化贡献最多20分
+        # 根据注释率调整
+        comment_ratio = (
+            metrics.lines_of_comments / metrics.lines_of_code
+            if metrics.lines_of_code > 0
+            else 0
+        )
+        comment_score = min(comment_ratio * 100, 20)  # 最高20分
 
-        return min(100.0, score)
+        # 根据维护性指数调整
+        maintainability_score = metrics.maintainability_index / 5  # 最高20分
+
+        final_score = (
+            base_score + component_score + comment_score + maintainability_score
+        )
+        return max(0, min(100, final_score))  # 确保分数在0-100之间
 
     def _generate_suggestions(
         self,
@@ -518,28 +609,29 @@ class CodeAnalyzer:
         """生成改进建议"""
         suggestions = []
 
-        # 代码质量建议
+        # 复杂度建议
+        high_complexity_components = [
+            c for c in components if c.complexity == CodeComplexity.HIGH
+        ]
+        if high_complexity_components:
+            suggestions.append(
+                f"发现 {len(high_complexity_components)} 个高复杂度组件，建议进行重构拆分"
+            )
+
+        # 注释建议
         if metrics.lines_of_code > 0:
             comment_ratio = metrics.lines_of_comments / metrics.lines_of_code
             if comment_ratio < 0.1:
-                suggestions.append("建议增加代码注释，提高代码可读性")
+                suggestions.append("代码注释率较低，建议增加必要的注释")
 
-        # 复杂度建议
-        complex_components = [
-            c for c in components if c.complexity == CodeComplexity.VERY_HIGH
-        ]
-        if complex_components:
-            suggestions.append(
-                f"发现 {len(complex_components)} 个高复杂度组件，建议重构"
-            )
+        # 维护性建议
+        if metrics.maintainability_index < 50:
+            suggestions.append("代码维护性较差，建议改进代码结构和文档")
 
         # 技术栈建议
-        if not any(ts.type == TechStackType.TESTING for ts in tech_stacks):
-            suggestions.append("建议添加测试框架，提高代码质量")
-
-        # 文档建议
-        if not any("README" in ts.name for ts in tech_stacks):
-            suggestions.append("建议添加项目文档和README文件")
+        tech_stack_types = set(t.type for t in tech_stacks)
+        if len(tech_stack_types) > 5:
+            suggestions.append("技术栈过于复杂，建议适当简化")
 
         return suggestions
 
@@ -621,3 +713,129 @@ class SimilarityAnalyzer:
         except Exception as e:
             logger.warning(f"计算文件相似度失败 {file1} vs {file2}: {e}")
             return 0.0
+
+
+class CodebaseAnalyzer:
+    """代码库分析器"""
+
+    def __init__(self):
+        """初始化代码库分析器"""
+        self.project_root = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "../../..")
+        )
+        logger.debug(f"代码库分析器初始化，项目根目录: {self.project_root}")
+
+    async def analyze_for_requirement(
+        self, requirement_text: str
+    ) -> List[Dict[str, Any]]:
+        """根据需求文本分析相关代码组件
+
+        Args:
+            requirement_text: 需求文本
+
+        Returns:
+            List[Dict[str, Any]]: 相关代码组件列表
+        """
+        logger.debug(f"分析需求相关代码: {requirement_text[:30]}...")
+
+        # 这里简化实现，返回一些基本组件
+        # 在实际应用中，可以使用更复杂的代码分析逻辑
+        components = [
+            {
+                "name": "RequirementsFlow",
+                "type": "class",
+                "path": "app/assistants/requirements/flow/requirements_flow.py",
+                "description": "需求分析工作流核心类，负责协调各个智能体完成需求分析",
+            },
+            {
+                "name": "RequirementClarifierAgent",
+                "type": "class",
+                "path": "app/assistants/requirements/agents/requirement_clarifier/agent.py",
+                "description": "需求澄清智能体，负责提出澄清问题和整理需求",
+            },
+            {
+                "name": "BusinessAnalystAgent",
+                "type": "class",
+                "path": "app/assistants/requirements/agents/business_analyst/agent.py",
+                "description": "业务分析智能体，负责分析需求的业务价值和可行性",
+            },
+        ]
+
+        logger.debug(f"找到 {len(components)} 个相关组件")
+        return components
+
+    async def analyze_file(self, file_path: str) -> Dict[str, Any]:
+        """分析单个文件
+
+        Args:
+            file_path: 文件路径
+
+        Returns:
+            Dict[str, Any]: 文件分析结果
+        """
+        if not os.path.exists(file_path):
+            logger.warning(f"文件不存在: {file_path}")
+            return {"error": "文件不存在"}
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # 简单分析，实际应用中可以使用更复杂的代码分析
+            lines = content.split("\n")
+            classes = []
+            functions = []
+            imports = []
+
+            for line in lines:
+                line = line.strip()
+                if line.startswith("class "):
+                    class_name = line.split("class ")[1].split("(")[0].strip()
+                    classes.append(class_name)
+                elif line.startswith("def "):
+                    func_name = line.split("def ")[1].split("(")[0].strip()
+                    functions.append(func_name)
+                elif line.startswith("import ") or line.startswith("from "):
+                    imports.append(line)
+
+            return {
+                "path": file_path,
+                "lines_count": len(lines),
+                "classes": classes,
+                "functions": functions,
+                "imports": imports,
+            }
+        except Exception as e:
+            logger.error(f"分析文件失败: {file_path}, 错误: {str(e)}")
+            return {"error": str(e)}
+
+    async def analyze_directory(self, directory_path: str) -> Dict[str, Any]:
+        """分析目录
+
+        Args:
+            directory_path: 目录路径
+
+        Returns:
+            Dict[str, Any]: 目录分析结果
+        """
+        if not os.path.exists(directory_path) or not os.path.isdir(directory_path):
+            logger.warning(f"目录不存在: {directory_path}")
+            return {"error": "目录不存在"}
+
+        try:
+            results = []
+            for root, dirs, files in os.walk(directory_path):
+                for file in files:
+                    if file.endswith(".py"):
+                        file_path = os.path.join(root, file)
+                        file_result = await self.analyze_file(file_path)
+                        results.append(file_result)
+
+            return {
+                "directory": directory_path,
+                "files_count": len(results),
+                "files": results,
+            }
+        except Exception as e:
+            logger.error(f"分析目录失败: {directory_path}, 错误: {str(e)}")
+            return {"error": str(e)}

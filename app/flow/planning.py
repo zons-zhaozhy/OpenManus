@@ -6,7 +6,9 @@ from typing import Dict, List, Optional, Union
 from pydantic import Field
 
 from app.agent.base import BaseAgent
+from app.config.timeouts import TimeoutConfig, get_timeout_config
 from app.flow.base import BaseFlow
+from app.flow.state import FlowState, FlowStateManager
 from app.llm import LLM
 from app.logger import logger
 from app.schema import AgentState, Message, ToolChoice
@@ -50,10 +52,23 @@ class PlanningFlow(BaseFlow):
     executor_keys: List[str] = Field(default_factory=list)
     active_plan_id: str = Field(default_factory=lambda: f"plan_{int(time.time())}")
     current_step_index: Optional[int] = None
+    timeout_config: TimeoutConfig = Field(
+        default_factory=lambda: get_timeout_config("planning")
+    )
+    current_attempt: int = Field(default=1)
+    state_manager: FlowStateManager = Field(default_factory=FlowStateManager)
 
     def __init__(
         self, agents: Union[BaseAgent, List[BaseAgent], Dict[str, BaseAgent]], **data
     ):
+        # Initialize timeout config if provided
+        if "timeout_config" in data:
+            data["timeout_config"] = TimeoutConfig(**data["timeout_config"])
+
+        # Initialize state manager if provided
+        if "state_manager" in data:
+            data["state_manager"] = FlowStateManager(**data["state_manager"])
+
         # Set executor keys before super().__init__
         if "executors" in data:
             data["executor_keys"] = data.pop("executors")
@@ -76,20 +91,66 @@ class PlanningFlow(BaseFlow):
 
     def get_executor(self, step_type: Optional[str] = None) -> BaseAgent:
         """
-        Get an appropriate executor agent for the current step.
-        Can be extended to select agents based on step type/requirements.
+        Get an appropriate executor agent for the current step with enhanced selection logic.
+
+        Args:
+            step_type: Optional type of step to execute
+
+        Returns:
+            BaseAgent: The most appropriate agent for executing the step
+
+        Raises:
+            ValueError: If no suitable agent can be found
         """
-        # If step type is provided and matches an agent key, use that agent
-        if step_type and step_type in self.agents:
-            return self.agents[step_type]
+        # Track agent selection reason for logging
+        selection_reason = "default selection"
+        selected_agent = None
 
-        # Otherwise use the first available executor or fall back to primary agent
-        for key in self.executor_keys:
-            if key in self.agents:
-                return self.agents[key]
+        try:
+            # Case 1: Step type matches an agent key exactly
+            if step_type and step_type in self.agents:
+                selected_agent = self.agents[step_type]
+                selection_reason = f"exact match for step type: {step_type}"
 
-        # Fallback to primary agent
-        return self.primary_agent
+            # Case 2: Step type matches part of an agent key
+            elif step_type:
+                for key, agent in self.agents.items():
+                    if step_type.lower() in key.lower():
+                        selected_agent = agent
+                        selection_reason = f"partial match: {step_type} in {key}"
+                        break
+
+            # Case 3: Use executor_keys in priority order
+            if not selected_agent:
+                for key in self.executor_keys:
+                    if key in self.agents:
+                        selected_agent = self.agents[key]
+                        selection_reason = f"found in executor_keys: {key}"
+                        break
+
+            # Case 4: Fallback to primary agent
+            if not selected_agent and self.primary_agent:
+                selected_agent = self.primary_agent
+                selection_reason = "fallback to primary agent"
+
+            # Case 5: Last resort - use first available agent
+            if not selected_agent and self.agents:
+                key = next(iter(self.agents))
+                selected_agent = self.agents[key]
+                selection_reason = f"last resort selection: {key}"
+
+            # If we still don't have an agent, raise an error
+            if not selected_agent:
+                raise ValueError("No suitable agent found for execution")
+
+            # Log the selection
+            logger.info(f"Selected agent: {selected_agent.name} ({selection_reason})")
+
+            return selected_agent
+
+        except Exception as e:
+            logger.error(f"Error selecting executor: {str(e)}")
+            raise ValueError(f"Failed to select executor: {str(e)}")
 
     async def execute(self, input_text: str) -> str:
         """Execute the planning flow with agents."""
@@ -97,40 +158,119 @@ class PlanningFlow(BaseFlow):
             if not self.primary_agent:
                 raise ValueError("No primary agent available")
 
+            # Initialize flow state
+            self.state_manager.transition_to(FlowState.RUNNING.value)
+            self.state_manager.update_data("start_time", time.time())
+
             # Create initial plan if input provided
             if input_text:
                 await self._create_initial_plan(input_text)
 
                 # Verify plan was created successfully
                 if self.active_plan_id not in self.planning_tool.plans:
-                    logger.error(
-                        f"Plan creation failed. Plan ID {self.active_plan_id} not found in planning tool."
-                    )
+                    error_msg = f"Plan creation failed. Plan ID {self.active_plan_id} not found in planning tool."
+                    self.state_manager.record_error(error_msg)
                     return f"Failed to create plan for: {input_text}"
 
             result = ""
-            while True:
+            iteration_count = 0
+
+            while (
+                iteration_count < self.timeout_config.max_iterations
+                and self.state_manager.can_proceed()
+            ):
+                iteration_count += 1
+
+                # Check total execution time
+                elapsed_time = time.time() - self.state_manager.get_data(
+                    "start_time", 0
+                )
+                if elapsed_time > self.timeout_config.total_timeout:
+                    logger.warning("Planning flow execution approaching timeout limit")
+                    result += "\n[System] Execution approaching timeout limit - finalizing current progress."
+                    break
+
                 # Get current step to execute
                 self.current_step_index, step_info = await self._get_current_step_info()
 
                 # Exit if no more steps or plan completed
                 if self.current_step_index is None:
+                    self.state_manager.transition_to(FlowState.COMPLETED.value)
                     result += await self._finalize_plan()
                     break
+
+                # Log progress
+                logger.info(
+                    f"Executing step {iteration_count}/{self.timeout_config.max_iterations} "
+                    f"(elapsed: {elapsed_time:.1f}s)"
+                )
 
                 # Execute current step with appropriate agent
                 step_type = step_info.get("type") if step_info else None
                 executor = self.get_executor(step_type)
-                step_result = await self._execute_step(executor, step_info)
-                result += step_result + "\n"
+
+                # Reset attempt counter for new step
+                self.current_attempt = 1
+
+                while (
+                    self.current_attempt <= self.timeout_config.max_retries
+                    and self.state_manager.can_proceed()
+                ):
+                    try:
+                        step_result = await self._execute_step(executor, step_info)
+                        result += step_result + "\n"
+                        self.state_manager.reset_errors()  # Reset error count on success
+                        break
+                    except Exception as e:
+                        error_msg = f"Step execution failed (attempt {self.current_attempt}): {str(e)}"
+                        if self.state_manager.record_error(error_msg):
+                            # Max errors exceeded
+                            logger.error(
+                                f"Step execution failed after {self.current_attempt} attempts"
+                            )
+                            result += f"Step execution failed: {str(e)}\n"
+                            # Update step status to blocked
+                            if self.current_step_index is not None:
+                                self.planning_tool.update_step_status(
+                                    self.active_plan_id,
+                                    self.current_step_index,
+                                    PlanStepStatus.BLOCKED.value,
+                                )
+                            break
+                        else:
+                            logger.warning(
+                                f"Retrying step execution (attempt {self.current_attempt + 1})"
+                            )
+                            await asyncio.sleep(self.timeout_config.retry_delay)
+                            self.current_attempt += 1
+                            continue
 
                 # Check if agent wants to terminate
                 if hasattr(executor, "state") and executor.state == AgentState.FINISHED:
+                    self.state_manager.transition_to(FlowState.COMPLETED.value)
                     break
+
+            # Handle max iterations reached
+            if iteration_count >= self.timeout_config.max_iterations:
+                logger.warning(
+                    f"⚠️ PlanningFlow reached max iterations ({self.timeout_config.max_iterations})"
+                )
+                result += "\n[System] Execution reached maximum steps - finalizing current progress."
+
+                # Try to gracefully finish the plan
+                result += await self._finalize_plan()
+
+            # Add final state information
+            if self.state_manager.is_terminal():
+                result += f"\n[System] Flow completed in state: {self.state_manager.current_state}"
+                if self.state_manager.last_error:
+                    result += f"\nLast error: {self.state_manager.last_error}"
 
             return result
         except Exception as e:
-            logger.error(f"Error in PlanningFlow: {str(e)}")
+            error_msg = f"Error in PlanningFlow: {str(e)}"
+            logger.error(error_msg)
+            self.state_manager.record_error(error_msg)
             return f"Execution failed: {str(e)}"
 
     async def _create_initial_plan(self, request: str) -> None:
@@ -275,33 +415,37 @@ class PlanningFlow(BaseFlow):
             return None, None
 
     async def _execute_step(self, executor: BaseAgent, step_info: dict) -> str:
-        """Execute the current step with the specified agent using agent.run()."""
-        # Prepare context for the agent with current plan status
-        plan_status = await self._get_plan_text()
-        step_text = step_info.get("text", f"Step {self.current_step_index}")
+        """Execute a single step with timeout and error handling."""
+        import asyncio
+        from asyncio import TimeoutError
 
-        # Create a prompt for the agent to execute the current step
-        step_prompt = f"""
-        CURRENT PLAN STATUS:
-        {plan_status}
-
-        YOUR CURRENT TASK:
-        You are now working on step {self.current_step_index}: "{step_text}"
-
-        Please only execute this current step using the appropriate tools. When you're done, provide a summary of what you accomplished.
-        """
-
-        # Use agent.run() to execute the step
         try:
-            step_result = await executor.run(step_prompt)
+            # Get progressive timeout based on current attempt
+            step_timeout = self.timeout_config.get_step_timeout(self.current_attempt)
 
-            # Mark the step as completed after successful execution
-            await self._mark_step_completed()
+            # Set a timeout for step execution
+            async with asyncio.timeout(step_timeout):
+                # Get step content
+                step_content = step_info.get("content", "")
+                if not step_content:
+                    logger.warning("Empty step content received")
+                    return "Step skipped - no content"
 
-            return step_result
+                # Execute step with executor
+                result = await executor.run(step_content)
+
+                # Mark step as completed if successful
+                await self._mark_step_completed()
+
+                return result
+
+        except TimeoutError:
+            logger.error(f"Step execution timed out after {step_timeout} seconds")
+            raise  # Let the retry logic in execute() handle it
+
         except Exception as e:
-            logger.error(f"Error executing step {self.current_step_index}: {e}")
-            return f"Error executing step {self.current_step_index}: {str(e)}"
+            logger.error(f"Error executing step: {str(e)}")
+            raise  # Let the retry logic in execute() handle it
 
     async def _mark_step_completed(self) -> None:
         """Mark the current step as completed."""

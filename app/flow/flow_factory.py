@@ -2,12 +2,16 @@ from enum import Enum
 from typing import Dict, List, Union
 
 from app.agent.base import BaseAgent
+from app.assistants.architecture.flow import ArchitectureFlow
+from app.assistants.requirements.flow import RequirementsFlow
 from app.flow.base import BaseFlow
 from app.flow.planning import PlanningFlow
 
 
 class FlowType(str, Enum):
     PLANNING = "planning"
+    REQUIREMENTS = "requirements"
+    ARCHITECTURE = "architecture"
 
 
 class FlowFactory:
@@ -21,6 +25,8 @@ class FlowFactory:
     ) -> BaseFlow:
         flows = {
             FlowType.PLANNING: PlanningFlow,
+            FlowType.REQUIREMENTS: RequirementsFlow,
+            FlowType.ARCHITECTURE: ArchitectureFlow,
         }
 
         flow_class = flows.get(flow_type)

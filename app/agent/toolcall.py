@@ -8,9 +8,15 @@ from app.agent.react import ReActAgent
 from app.exceptions import TokenLimitExceeded
 from app.logger import logger
 from app.prompt.toolcall import NEXT_STEP_PROMPT, SYSTEM_PROMPT
-from app.schema import TOOL_CHOICE_TYPE, AgentState, Message, ToolCall, ToolChoice
+from app.schema import (
+    TOOL_CHOICE_TYPE,
+    AgentState,
+    HumanInputRequired,
+    Message,
+    ToolCall,
+    ToolChoice,
+)
 from app.tool import CreateChatCompletion, Terminate, ToolCollection
-
 
 TOOL_CALL_REQUIRED = "Tool calls required but none provided"
 
@@ -128,7 +134,7 @@ class ToolCallAgent(ReActAgent):
             )
             return False
 
-    async def act(self) -> str:
+    async def act(self) -> Union[str, HumanInputRequired]:
         """Execute tool calls and handle their results"""
         if not self.tool_calls:
             if self.tool_choices == ToolChoice.REQUIRED:
@@ -143,6 +149,10 @@ class ToolCallAgent(ReActAgent):
             self._current_base64_image = None
 
             result = await self.execute_tool(command)
+
+            # If human input is required, propagate the signal immediately
+            if isinstance(result, HumanInputRequired):
+                return result
 
             if self.max_observe:
                 result = result[: self.max_observe]
@@ -163,7 +173,7 @@ class ToolCallAgent(ReActAgent):
 
         return "\n\n".join(results)
 
-    async def execute_tool(self, command: ToolCall) -> str:
+    async def execute_tool(self, command: ToolCall) -> Union[str, HumanInputRequired]:
         """Execute a single tool call with robust error handling"""
         if not command or not command.function or not command.function.name:
             return "Error: Invalid command format"
@@ -178,20 +188,41 @@ class ToolCallAgent(ReActAgent):
 
             # Execute the tool
             logger.info(f"🔧 Activating tool: '{name}'...")
-            result = await self.available_tools.execute(name=name, tool_input=args)
+            tool_execution_result = await self.available_tools.execute(
+                name=name, tool_input=args
+            )
+
+            # Special handling for ask_human tool
+            if name == "ask_human":
+                try:
+                    # Attempt to parse the string result into HumanInputRequired
+                    parsed_result = json.loads(tool_execution_result)
+                    if parsed_result.get("type") == "human_input_required":
+                        return HumanInputRequired(**parsed_result)
+                except json.JSONDecodeError:
+                    logger.error(
+                        f"Failed to decode ask_human result as JSON: {tool_execution_result}"
+                    )
+                except Exception as e:
+                    logger.error(f"Error processing ask_human result: {e}")
+                # Fallback if parsing fails or type is incorrect
+                return tool_execution_result  # Return raw string if not valid HumanInputRequired
 
             # Handle special tools
-            await self._handle_special_tool(name=name, result=result)
+            await self._handle_special_tool(name=name, result=tool_execution_result)
 
             # Check if result is a ToolResult with base64_image
-            if hasattr(result, "base64_image") and result.base64_image:
+            if (
+                hasattr(tool_execution_result, "base64_image")
+                and tool_execution_result.base64_image
+            ):
                 # Store the base64_image for later use in tool_message
-                self._current_base64_image = result.base64_image
+                self._current_base64_image = tool_execution_result.base64_image
 
             # Format result for display (standard case)
             observation = (
-                f"Observed output of cmd `{name}` executed:\n{str(result)}"
-                if result
+                f"Observed output of cmd `{name}` executed:\n{str(tool_execution_result)}"
+                if tool_execution_result
                 else f"Cmd `{name}` completed with no output"
             )
 

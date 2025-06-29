@@ -1,6 +1,9 @@
 import logging
 import sys
 
+import uvicorn
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 logging.basicConfig(level=logging.INFO, handlers=[logging.StreamHandler(sys.stderr)])
 
@@ -13,10 +16,13 @@ from typing import Any, Dict, Optional
 
 from mcp.server.fastmcp import FastMCP
 
+from app.assistants.requirements.flow.requirements_flow import RequirementsFlow
 from app.logger import logger
 from app.tool.base import BaseTool
 from app.tool.bash import Bash
 from app.tool.browser_use_tool import BrowserUseTool
+
+# from app.tool.requirements_modeling import RequirementModelingTool # 暂时注释，将使用 RequirementsFlow
 from app.tool.str_replace_editor import StrReplaceEditor
 from app.tool.terminate import Terminate
 
@@ -27,12 +33,68 @@ class MCPServer:
     def __init__(self, name: str = "openmanus"):
         self.server = FastMCP(name)
         self.tools: Dict[str, BaseTool] = {}
+        self.app = FastAPI()
 
-        # Initialize standard tools
+        # 配置 CORS
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+        # 初始化标准工具
         self.tools["bash"] = Bash()
         self.tools["browser"] = BrowserUseTool()
         self.tools["editor"] = StrReplaceEditor()
         self.tools["terminate"] = Terminate()
+
+        # 注册需求分析工具 - 使用与类中定义一致的名称
+        # self.tools["requirement_modeling"] = RequirementModelingTool() # 暂时注释，将使用 RequirementsFlow
+
+        # 注册 API 路由
+        self.register_api_routes()
+
+    def register_api_routes(self):
+        """注册 API 路由"""
+
+        @self.app.post("/api/requirements/analyze")
+        async def analyze_requirements(request: dict):
+            try:
+                # 支持两种参数格式
+                requirement_text = request.get("requirement_text") or request.get(
+                    "text"
+                )
+                if not requirement_text:
+                    return {"status": "error", "message": "需求文本不能为空"}
+
+                # 实例化需求分析主流程
+                requirements_flow = RequirementsFlow()
+                # 执行需求分析流程
+                result = await requirements_flow.process(requirement_text)
+                return {
+                    "status": "success",
+                    "message": "需求分析流程已启动并完成",
+                    "result": result,
+                }
+            except Exception as e:
+                logger.error(f"需求分析流程执行失败: {e}", exc_info=True)
+                return {"status": "error", "message": str(e)}
+
+        @self.app.post("/api/requirements/workflow/start")
+        async def start_workflow(request: dict):
+            try:
+                # 调用工作流工具 - 此处可能需要根据实际的工作流集成进行调整
+                # 由于 RequirementsFlow 现在处理核心分析，此端点可能需要重新评估或删除
+                # 目前暂时保留，但其功能需要明确
+                return {
+                    "status": "error",
+                    "message": "此工作流启动端点暂未实现具体功能或已由 /api/requirements/analyze 端点取代",
+                }
+            except Exception as e:
+                logger.error(f"工作流启动失败: {e}")
+                return {"status": "error", "message": str(e)}
 
     def register_tool(self, tool: BaseTool, method_name: Optional[str] = None) -> None:
         """Register a tool with parameter validation and documentation."""
@@ -155,26 +217,27 @@ class MCPServer:
         # Register cleanup function (match original behavior)
         atexit.register(lambda: asyncio.run(self.cleanup()))
 
-        # Start server (with same logging as original)
-        logger.info(f"Starting OpenManus server ({transport} mode)")
-        self.server.run(transport=transport)
+        # Run the server
+        if transport == "stdio":
+            self.server.run()
+        else:
+            uvicorn.run(self.app, host="0.0.0.0", port=8000, log_config=None)
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description="OpenManus MCP Server")
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(description="Run the MCP server.")
     parser.add_argument(
         "--transport",
-        choices=["stdio"],
+        type=str,
         default="stdio",
-        help="Communication method: stdio or http (default: stdio)",
+        choices=["stdio", "http"],
+        help="Transport protocol (stdio or http)",
     )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
-
-    # Create and run server (maintaining original flow)
     server = MCPServer()
     server.run(transport=args.transport)

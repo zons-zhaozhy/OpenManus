@@ -14,9 +14,10 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from app.core.config_manager import ConfigManager
+from app.config import Config
 from app.llm import LLM
 from app.logger import logger
+from app.schema import Message
 
 
 class ConflictType(Enum):
@@ -97,30 +98,29 @@ class ConflictResolutionEngine:
     """智能冲突解决引擎"""
 
     def __init__(self):
-        self.config_manager = ConfigManager()
-        self.config = {}
+        self.config = Config() # 使用新的Config
         self.llm = LLM()
+        self.rules = self._load_conflict_rules()
 
         # 冲突处理配置
-        self.conflict_config = self.config.get(
-            "conflict_resolution",
-            {
-                "severity_weights": {
-                    "critical": 1.0,
-                    "high": 0.8,
-                    "medium": 0.6,
-                    "low": 0.3,
-                },
-                "nature_weights": {
-                    "incompatible": 1.0,
-                    "negotiable": 0.7,
-                    "innovation": 0.4,
-                    "temporary": 0.2,
-                },
-                "auto_resolution_threshold": 0.3,  # 低于此阈值可自动处理
-                "stakeholder_decision_threshold": 0.8,  # 高于此阈值需要利益相关者决策
+        # 由于Config类没有直接的get方法来获取嵌套配置，这里直接定义默认值
+        # 实际应用中，这些配置应通过Config类的属性或专门的配置对象来访问
+        self.conflict_config = {
+            "severity_weights": {
+                "critical": 1.0,
+                "high": 0.8,
+                "medium": 0.6,
+                "low": 0.3,
             },
-        )
+            "nature_weights": {
+                "incompatible": 1.0,
+                "negotiable": 0.7,
+                "innovation": 0.4,
+                "temporary": 0.2,
+            },
+            "auto_resolution_threshold": 0.3,  # 低于此阈值可自动处理
+            "stakeholder_decision_threshold": 0.8,  # 高于此阈值需要利益相关者决策
+        }
 
     async def analyze_conflicts_comprehensive(
         self, requirement_text: str, knowledge_conflicts: Dict, codebase_conflicts: Dict
@@ -271,14 +271,14 @@ class ConflictResolutionEngine:
 
         try:
             response = await self.llm.ask(
-                messages=[{"role": "user", "content": prompt}],
+                messages=[Message.user_message(prompt)],
                 temperature=0.2,
                 stream=False,
             )
 
             import json
 
-            result = json.loads(response)
+            result = json.loads(str(response)) # 确保转换为str
 
             strategies = []
             for i, strategy_data in enumerate(result.get("strategies", [])):
@@ -462,3 +462,44 @@ class ConflictResolutionEngine:
         }
 
         return decision_matrix
+
+    def _load_conflict_rules(self) -> List[Dict[str, Any]]:
+        """加载预定义的冲突检测规则"""
+        # 这是一个简化的示例，实际规则可以从配置文件或数据库加载
+        return [
+            {
+                "name": "需求功能冲突",
+                "keywords": ["功能冲突", "功能重叠", "功能矛盾"],
+                "severity": ConflictSeverity.CRITICAL,
+                "nature": DifferenceNature.INCOMPATIBLE_CONFLICT,
+                "description_template": "检测到功能 '{feature1}' 与功能 '{feature2}' 存在冲突或重叠。",
+            },
+            {
+                "name": "技术栈不兼容",
+                "keywords": ["技术栈", "不兼容", "版本冲突"],
+                "severity": ConflictSeverity.HIGH,
+                "nature": DifferenceNature.INCOMPATIBLE_CONFLICT,
+                "description_template": "需求引入的技术栈 '{tech_stack}' 与现有系统 '{existing_tech}' 不兼容。",
+            },
+            {
+                "name": "性能指标冲突",
+                "keywords": ["性能", "响应时间", "吞吐量", "并发"],
+                "severity": ConflictSeverity.MEDIUM,
+                "nature": DifferenceNature.NEGOTIABLE_DIFFERENCE,
+                "description_template": "需求中的性能指标 '{metric}' 与现有系统能力或非功能需求存在差异。",
+            },
+            {
+                "name": "安全漏洞引入",
+                "keywords": ["安全漏洞", "权限问题", "数据泄露"],
+                "severity": ConflictSeverity.CRITICAL,
+                "nature": DifferenceNature.INCOMPATIBLE_CONFLICT,
+                "description_template": "需求可能引入安全漏洞，涉及 '{area}'。",
+            },
+            {
+                "name": "业务流程矛盾",
+                "keywords": ["业务流程", "逻辑矛盾", "操作冲突"],
+                "severity": ConflictSeverity.HIGH,
+                "nature": DifferenceNature.NEGOTIABLE_DIFFERENCE,
+                "description_template": "需求描述的业务流程 '{process}' 与现有业务规则存在矛盾。",
+            },
+        ]

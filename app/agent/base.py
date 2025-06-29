@@ -1,3 +1,4 @@
+import uuid
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from typing import List, Optional
@@ -24,6 +25,9 @@ class BaseAgent(BaseModel, ABC):
     """
 
     # Core attributes
+    id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()), description="Unique ID of the agent"
+    )
     name: str = Field(..., description="Unique name of the agent")
     description: Optional[str] = Field(None, description="Optional agent description")
 
@@ -147,7 +151,7 @@ class BaseAgent(BaseModel, ABC):
             ):
                 self.current_step += 1
                 logger.info(f"Executing step {self.current_step}/{self.max_steps}")
-                step_result = await self.step()
+                step_result = await self.step(request)
 
                 # Check for stuck state
                 if self.is_stuck():
@@ -165,36 +169,89 @@ class BaseAgent(BaseModel, ABC):
         return "\n".join(results) if results else "No steps executed"
 
     @abstractmethod
-    async def step(self) -> str:
+    async def step(self, content: Optional[str] = None) -> str:
         """Execute a single step in the agent's workflow.
+
+        Args:
+            content: Optional content to process in this step.
+
+        Returns:
+            str: The result of this step's execution.
 
         Must be implemented by subclasses to define specific behavior.
         """
 
     def handle_stuck_state(self):
-        """Handle stuck state by adding a prompt to change strategy"""
-        stuck_prompt = "\
-        Observed duplicate responses. Consider new strategies and avoid repeating ineffective paths already attempted."
-        self.next_step_prompt = f"{stuck_prompt}\n{self.next_step_prompt}"
-        logger.warning(f"Agent detected stuck state. Added prompt: {stuck_prompt}")
+        """Enhanced stuck state handling with strategy rotation."""
+        logger.warning("Agent detected stuck state - implementing recovery strategies")
+
+        # Reset any accumulated context that might be causing loops
+        self.current_step = 0
+
+        # List of strategy prompts to try
+        strategies = [
+            "Previous approach was ineffective. Try a completely different strategy.",
+            "Break down the problem into smaller, more manageable steps.",
+            "Consider if any assumptions being made are incorrect.",
+            "Look for edge cases or exceptions that might be causing issues.",
+            "Try to solve a simpler version of the problem first.",
+        ]
+
+        # Rotate through strategies based on current step
+        strategy_index = (self.current_step // 2) % len(strategies)
+        selected_strategy = strategies[strategy_index]
+
+        # Update the next step prompt with the new strategy
+        if self.next_step_prompt:
+            self.next_step_prompt = (
+                f"{selected_strategy}\n\nOriginal prompt:\n{self.next_step_prompt}"
+            )
+        else:
+            self.next_step_prompt = selected_strategy
+
+        # Add a system message about the strategy change
+        self.update_memory(
+            "system",
+            f"Detected potential loop - switching to new strategy: {selected_strategy}",
+        )
 
     def is_stuck(self) -> bool:
-        """Check if the agent is stuck in a loop by detecting duplicate content"""
-        if len(self.memory.messages) < 2:
+        """Enhanced stuck detection with content similarity and pattern recognition."""
+        if (
+            len(self.memory.messages) < 3
+        ):  # Need at least 3 messages for pattern detection
             return False
 
         last_message = self.memory.messages[-1]
         if not last_message.content:
             return False
 
-        # Count identical content occurrences
-        duplicate_count = sum(
-            1
-            for msg in reversed(self.memory.messages[:-1])
-            if msg.role == "assistant" and msg.content == last_message.content
-        )
+        # Get last 5 assistant messages
+        recent_messages = [
+            msg
+            for msg in self.memory.messages[-10:]  # Look at last 10 messages
+            if msg.role == "assistant" and msg.content
+        ][
+            -5:
+        ]  # Take last 5 assistant messages
 
-        return duplicate_count >= self.duplicate_threshold
+        if len(recent_messages) < 2:
+            return False
+
+        # Check for exact duplicates
+        if any(msg.content == last_message.content for msg in recent_messages[:-1]):
+            return True
+
+        # Check for similar patterns (e.g. same starting phrases)
+        pattern_count = 0
+        for msg in recent_messages[:-1]:
+            # Get first 50 chars for pattern matching
+            pattern = msg.content[:50] if len(msg.content) > 50 else msg.content
+            if pattern in last_message.content:
+                pattern_count += 1
+
+        # If we see similar patterns multiple times, consider it stuck
+        return pattern_count >= 2
 
     @property
     def messages(self) -> List[Message]:

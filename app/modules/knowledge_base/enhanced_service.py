@@ -3,6 +3,8 @@
 """
 
 import asyncio
+import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -36,7 +38,7 @@ class EnhancedKnowledgeService:
         初始化增强版知识库服务
 
         Args:
-            storage_path: 存储路径
+            storage_path: 知识库存储路径
         """
         self.storage_path = storage_path
 
@@ -44,14 +46,16 @@ class EnhancedKnowledgeService:
         self.knowledge_manager = KnowledgeManager(storage_path)
         self.document_processor = DocumentProcessor(storage_path)
 
-        # 初始化向量存储（如果可用）
-        self.vector_store = None
-        if VECTOR_STORE_AVAILABLE:
-            try:
-                self.vector_store = VectorStore(storage_path)
-                logger.info("向量存储服务初始化成功")
-            except RuntimeError as e:
-                logger.warning(f"向量存储服务初始化失败: {e}")
+        # 初始化向量存储
+        try:
+            self.vector_store = VectorStore(
+                storage_path=storage_path,
+                embedding_model="paraphrase-multilingual-MiniLM-L12-v2",
+            )
+            logger.info("向量存储初始化成功")
+        except Exception as e:
+            logger.error(f"向量存储初始化失败: {e}")
+            self.vector_store = None
 
         logger.info("增强版知识库服务初始化完成")
 
@@ -65,6 +69,7 @@ class EnhancedKnowledgeService:
         creator: str = "system",
         tags: Optional[List[str]] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        type: Optional[str] = None,
     ) -> Optional[KnowledgeBase]:
         """
         创建知识库
@@ -76,27 +81,37 @@ class EnhancedKnowledgeService:
             creator: 创建者
             tags: 标签
             metadata: 元数据
+            type: 知识库类型（可选）
 
         Returns:
             Optional[KnowledgeBase]: 创建的知识库
         """
-        # 创建知识库
-        kb = self.knowledge_manager.create_knowledge_base(
-            name=name,
-            description=description,
-            category=category,
-            creator=creator,
-            tags=tags,
-            metadata=metadata,
-        )
+        try:
+            # 创建知识库
+            kb = self.knowledge_manager.create_knowledge_base(
+                name=name,
+                description=description,
+                category=category,
+                creator=creator,
+                tags=tags,
+                metadata=metadata,
+            )
 
-        if kb and self.vector_store:
-            # 创建对应的向量集合
-            success = self.vector_store.create_knowledge_base_collection(kb.id, kb.name)
-            if not success:
-                logger.warning(f"为知识库 {kb.id} 创建向量集合失败")
+            if kb and self.vector_store:
+                # 创建对应的向量集合
+                success = self.vector_store.create_knowledge_base_collection(
+                    kb.id, kb.name
+                )
+                if not success:
+                    logger.warning(f"为知识库 {kb.id} 创建向量集合失败")
+                else:
+                    logger.info(f"为知识库 {kb.id} 创建向量集合成功")
 
-        return kb
+            return kb
+
+        except Exception as e:
+            logger.error(f"创建知识库失败: {e}")
+            return None
 
     def list_knowledge_bases(
         self,
@@ -616,3 +631,71 @@ class EnhancedKnowledgeService:
             Dict[str, Any]: 统计信息
         """
         return self.get_system_stats()
+
+    def add_document(
+        self,
+        kb_id: str,
+        title: str,
+        content: str,
+        doc_type: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """
+        添加文档到知识库
+
+        Args:
+            kb_id: 知识库ID
+            title: 文档标题
+            content: 文档内容
+            doc_type: 文档类型
+            metadata: 元数据
+
+        Returns:
+            bool: 添加是否成功
+        """
+        try:
+            # 准备文档数据
+            doc_id = str(uuid.uuid4())
+            doc_metadata = {
+                "title": title,
+                "type": doc_type,
+                "timestamp": datetime.now().isoformat(),
+                **(metadata or {}),
+            }
+
+            # 添加到向量存储
+            success = self.vector_store.add_documents(
+                kb_id,
+                [
+                    {
+                        "content": content,
+                        "metadata": doc_metadata,
+                    }
+                ],
+            )
+
+            if success:
+                logger.info(f"文档添加成功: {title}")
+                return True
+            else:
+                logger.warning(f"文档添加失败: {title}")
+                return False
+
+        except Exception as e:
+            logger.error(f"添加文档失败: {e}")
+            return False
+
+    def get_vector_store_diagnostics(self) -> Dict[str, Any]:
+        """
+        获取向量存储诊断信息
+
+        Returns:
+            Dict[str, Any]: 诊断信息
+        """
+        if not self.vector_store:
+            return {
+                "status": "unavailable",
+                "error": "向量存储未初始化",
+            }
+
+        return self.vector_store.get_diagnostic_info()

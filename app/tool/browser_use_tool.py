@@ -3,10 +3,34 @@ import base64
 import json
 from typing import Generic, Optional, TypeVar
 
-from browser_use import Browser as BrowserUseBrowser
-from browser_use import BrowserConfig
-from browser_use.browser.context import BrowserContext, BrowserContextConfig
-from browser_use.dom.service import DomService
+try:
+    from browser_use import Browser as BrowserUseBrowser
+    from browser_use import BrowserConfig
+    from browser_use.browser.context import BrowserContext, BrowserContextConfig
+    from browser_use.dom.service import DomService
+
+    BROWSER_USE_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: browser_use not available: {e}")
+
+    # 定义占位符类
+    class BrowserUseBrowser:
+        pass
+
+    class BrowserConfig:
+        pass
+
+    class BrowserContext:
+        pass
+
+    class BrowserContextConfig:
+        pass
+
+    class DomService:
+        pass
+
+    BROWSER_USE_AVAILABLE = False
+
 from pydantic import Field, field_validator
 from pydantic_core.core_schema import ValidationInfo
 
@@ -14,7 +38,6 @@ from app.config import config
 from app.llm import LLM
 from app.tool.base import BaseTool, ToolResult
 from app.tool.web_search import WebSearch
-
 
 _BROWSER_DESCRIPTION = """\
 A powerful browser automation tool that allows interaction with web pages through various actions.
@@ -220,6 +243,12 @@ class BrowserUseTool(BaseTool, Generic[Context]):
         Returns:
             ToolResult with the action's output or error
         """
+        # 检查browser_use是否可用
+        if not BROWSER_USE_AVAILABLE:
+            return ToolResult(
+                error="Browser functionality is not available. Please install browser-use package or run in an environment where it's supported."
+            )
+
         async with self.lock:
             try:
                 context = await self._ensure_browser_initialized()
