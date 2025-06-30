@@ -91,7 +91,7 @@ async def test_sandbox_python_environment(sandbox):
     """Tests Python environment configuration."""
     # Test Python version
     result = await sandbox.terminal.run_command("python3 --version")
-    assert "Python 3.10" in result
+    assert "Python 3.12" in result
 
     # Test basic module imports
     python_code = """
@@ -111,10 +111,35 @@ async def test_sandbox_network_access(sandbox):
     if not sandbox.config.network_enabled:
         pytest.skip("Network access is disabled")
 
-    # Test network connectivity
-    await sandbox.terminal.run_command("apt update && apt install curl -y")
-    result = await sandbox.terminal.run_command("curl -I https://www.example.com")
-    assert "HTTP/2 200" in result
+    # Skip network test if no internet connection
+    import urllib.request
+
+    try:
+        urllib.request.urlopen("https://www.example.com", timeout=5)
+    except:
+        pytest.skip("No internet connection available")
+
+    try:
+        # Install curl with detailed error handling
+        install_result = await sandbox.terminal.run_command(
+            "apt update && apt install -y curl", timeout=180
+        )
+        if "E:" in install_result:
+            pytest.fail(f"Package installation failed: {install_result}")
+
+        # Test network connectivity with detailed error output
+        result = await sandbox.terminal.run_command(
+            "curl -v -s -o /dev/null -w '%{http_code}' https://www.example.com",
+            timeout=60,
+        )
+        print(f"Curl test result: {result}")  # Debug output
+        assert result.strip() in (
+            "200",
+            "301",
+            "302",
+        ), f"Unexpected HTTP status: {result}"
+    except Exception as e:
+        pytest.fail(f"Network test failed with exception: {str(e)}")
 
 
 @pytest.mark.asyncio

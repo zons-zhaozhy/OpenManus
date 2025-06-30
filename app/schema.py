@@ -61,7 +61,7 @@ class Message(BaseModel):
     tool_call_id: Optional[str] = Field(default=None)
     base64_image: Optional[str] = Field(default=None)
 
-    def __add__(self, other) -> List["Message"]:
+    def __add__(self, other) -> list:
         """支持 Message + list 或 Message + Message 的操作"""
         if isinstance(other, list):
             return [self] + other
@@ -72,7 +72,7 @@ class Message(BaseModel):
                 f"unsupported operand type(s) for +: '{type(self).__name__}' and '{type(other).__name__}'"
             )
 
-    def __radd__(self, other) -> List["Message"]:
+    def __radd__(self, other) -> list:
         """支持 list + Message 的操作"""
         if isinstance(other, list):
             return other + [self]
@@ -144,13 +144,18 @@ class Message(BaseModel):
             base64_image: Optional base64 encoded image
         """
         formatted_calls = [
-            {"id": call.id, "function": call.function.model_dump(), "type": "function"}
+            ToolCall(id=call.id, function=Function(**call.function.model_dump()))
             for call in tool_calls
         ]
+        content_str = (
+            content
+            if isinstance(content, str)
+            else "\n".join(content) if isinstance(content, list) else ""
+        )
         return cls(
             role=Role.ASSISTANT,
-            content=content,
-            tool_calls=formatted_calls,
+            content=content_str,
+            tool_calls=formatted_calls if formatted_calls else None,
             base64_image=base64_image,
             **kwargs,
         )
@@ -185,3 +190,108 @@ class Memory(BaseModel):
     def to_dict_list(self) -> List[dict]:
         """Convert messages to list of dicts"""
         return [msg.to_dict() for msg in self.messages]
+
+
+class EventType(str, Enum):
+    """Event types for WebSocket communication"""
+
+    TASK_START = "task_start"
+    TASK_COMPLETE = "task_complete"
+    STAGE_CHANGE = "stage_change"
+    LOG = "log"
+    ERROR = "error"
+
+
+class Event(BaseModel):
+    """Event model for WebSocket communication"""
+
+    type: EventType
+    data: Any
+
+
+class QuestionType(str, Enum):
+    """问题类型枚举"""
+
+    CHOICE = "choice"  # 单选题
+    MULTI_CHOICE = "multi"  # 多选题
+    YES_NO = "yes_no"  # 是/否问题
+    SCALE = "scale"  # 量表问题（1-5分）
+    SHORT_TEXT = "short_text"  # 简短文本
+    CONFIRM = "confirm"  # 确认默认值
+
+
+class Question(BaseModel):
+    """问题基类"""
+
+    type: QuestionType
+    question: str
+    description: Optional[str] = None
+    required: bool = True
+
+
+class ChoiceQuestion(Question):
+    """选择题"""
+
+    type: QuestionType = QuestionType.CHOICE
+    options: List[str]
+    default: Optional[int] = None  # 默认选项的索引
+
+
+class MultiChoiceQuestion(Question):
+    """多选题"""
+
+    type: QuestionType = QuestionType.MULTI_CHOICE
+    options: List[str]
+    defaults: Optional[List[int]] = None  # 默认选中的选项索引列表
+
+
+class YesNoQuestion(Question):
+    """是/否问题"""
+
+    type: QuestionType = QuestionType.YES_NO
+    default: Optional[bool] = None
+
+
+class ScaleQuestion(Question):
+    """量表问题"""
+
+    type: QuestionType = QuestionType.SCALE
+    min_value: int = 1
+    max_value: int = 5
+    labels: Optional[List[str]] = None  # 刻度说明
+    default: Optional[int] = None
+
+
+class ShortTextQuestion(Question):
+    """简短文本问题"""
+
+    type: QuestionType = QuestionType.SHORT_TEXT
+    max_length: Optional[int] = None
+    placeholder: Optional[str] = None
+    default: Optional[str] = None
+
+
+class ConfirmQuestion(Question):
+    """确认问题"""
+
+    type: QuestionType = QuestionType.CONFIRM
+    default_value: str
+    default: bool = True
+
+
+QuestionUnion = Union[
+    ChoiceQuestion,
+    MultiChoiceQuestion,
+    YesNoQuestion,
+    ScaleQuestion,
+    ShortTextQuestion,
+    ConfirmQuestion,
+]
+
+
+class QuestionResponse(BaseModel):
+    """问题回答"""
+
+    question_type: QuestionType
+    response: Union[str, int, bool, List[int], List[str]]
+    raw_input: str

@@ -1,0 +1,137 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+# OpenManus Development Guidelines for Claude
+
+## Core Principles
+
+### 1. Understanding and Accuracy
+- ALWAYS analyze user input thoroughly before taking action
+- NEVER make assumptions about user intent
+- When uncertain, ASK specific, targeted questions
+- MAINTAIN context of the entire conversation
+- TRACK and SUMMARIZE user requirements in your working memory
+- VALIDATE your understanding before proceeding with implementation
+- AUTOMATICALLY collect and document all requirements in `.cursor/rules/req.mdc`
+
+### 2. Temporal Context
+- Current temporal context: June 2025
+- PRIORITIZE recent information, especially for AI/ML topics
+- EVALUATE source freshness when searching or referencing
+- PREFER documentation and libraries from 2024-2025
+- CONSIDER rapid AI advancement when making technology choices
+
+### 3. Architecture and Design
+- IMPLEMENT modular, component-based architecture
+- SEPARATE concerns between layout and logic
+- ISOLATE styling from component structure
+- USE dependency injection and interface-based design
+- FOLLOW OpenManus architectural patterns
+- REUSE existing OpenManus components when possible
+- AVOID reinventing functionality that exists in OpenManus
+
+### 4. Communication and Output
+- BREAK large outputs into manageable segments
+- USE consistent port numbers across all services
+- MAINTAIN alignment with global objectives
+- PRESERVE OpenManus core functionality
+- ENABLE future OpenManus version upgrades
+- THINK in English for precision, but RESPOND in Chinese when possible
+
+## Technical Standards
+
+### 1. Code Organization
+```typescript
+// ✅ DO: Separate concerns
+interface ComponentProps {
+  data: DataType;
+  onAction: (data: DataType) => void;
+}
+
+// ❌ DON'T: Mix styling with logic
+const Component: React.FC<ComponentProps> = ({ data, onAction }) => {
+  return <div style={{ /* inline styles */ }}>{/* component logic */}</div>
+}
+```
+
+### 2. Testing Requirements
+- ACHIEVE minimum 80% test coverage
+- IMPLEMENT unit tests for all core functionality
+- USE mocking and stubbing for dependencies
+- PROVIDE testing utilities and helpers
+
+### 3. Error Handling
+- DEFINE clear exception hierarchies
+- IMPLEMENT meaningful error messages
+- LOG errors with full context
+- ENSURE exception safety
+
+## Security Guidelines
+
+### 1. Data Protection
+- ENCRYPT sensitive data at rest
+- SECURE all communications
+- IMPLEMENT access control
+- APPLY data sanitization
+
+### 2. Access Control
+- ENFORCE user authentication
+- MAINTAIN audit logs
+- PREVENT privilege escalation
+- SUPPORT multi-factor authentication
+
+### 3. System Security
+- VALIDATE all inputs
+- PREVENT SQL injection
+- PROTECT against XSS
+- CONDUCT security scans
+
+## Performance Standards
+
+### 1. Response Times
+- MAINTAIN API response times under 500ms
+- IMPLEMENT progress tracking for batch operations
+- USE async processing for long-running tasks
+- TRACK performance metrics
+
+### 2. Resource Management
+- OPTIMIZE memory usage
+- MONITOR CPU utilization
+- PREVENT resource leaks
+- IMPLEMENT resource limits
+
+## Implementation Rules
+
+### 1. When Creating New Features
+- ANALYZE existing OpenManus implementations
+- FOLLOW established patterns
+- EXTEND rather than replace
+- DOCUMENT integration points
+
+### 2. When Modifying Existing Code
+- PRESERVE original functionality
+- MAINTAIN backward compatibility
+- ADD tests for new functionality
+- UPDATE documentation
+
+### 3. When Handling Dependencies
+- USE specified version ranges
+- DOCUMENT breaking changes
+- MAINTAIN dependency graph
+- REGULARLY update security patches
+
+## Documentation Requirements
+
+### 1. Code Documentation
+- WRITE clear function descriptions
+- DOCUMENT parameters and return types
+- PROVIDE usage examples
+- EXPLAIN complex algorithms
+
+### 2. Architecture Documentation
+- MAINTAIN system diagrams
+- DOCUMENT component interactions
+- DESCRIBE data flows
+- UPDATE integration guides

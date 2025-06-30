@@ -1,0 +1,36 @@
+[flake8]
+max-line-length = 100
+exclude =
+    .git,
+    __pycache__,
+    build,
+    dist,
+    *.egg-info,
+    .venv,
+    .tox,
+    .pytest_cache,
+    .coverage,
+    coverage_html,
+    .mypy_cache,
+    .vscode,
+    .idea
+ignore =
+    # E203: Whitespace before ':' (black handles this)
+    E203,
+    # W503: Line break before binary operator (black handles this)
+    W503,
+    # E501: Line too long (black handles this)
+    E501,
+    # E231: Missing whitespace after ',' (black handles this)
+    E231,
+    # F403: 'from module import *' used
+    F403,
+    # F405: Name may be undefined, or defined from star imports
+    F405
+per-file-ignores =
+    # F401: Module imported but unused
+    __init__.py: F401
+max-complexity = 10
+statistics = True
+count = True
+show-source = True

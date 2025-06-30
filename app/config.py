@@ -2,9 +2,9 @@ import json
 import threading
 import tomllib
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 def get_project_root() -> Path:
@@ -26,8 +26,19 @@ class LLMSettings(BaseModel):
         description="Maximum input tokens to use across all requests (None for unlimited)",
     )
     temperature: float = Field(1.0, description="Sampling temperature")
-    api_type: str = Field(..., description="Azure, Openai, or Ollama")
+    api_type: Literal["Azure", "Openai", "Ollama", "deepseek", "aws"] = Field(
+        ..., description="API type (Azure, Openai, Ollama, deepseek, or aws)"
+    )
     api_version: str = Field(..., description="Azure Openai version if AzureOpenai")
+
+    @model_validator(mode="after")
+    def validate_api_type(self) -> "LLMSettings":
+        valid_api_types = ["Azure", "Openai", "Ollama", "deepseek", "aws"]
+        if self.api_type not in valid_api_types:
+            raise ValueError(
+                f"Invalid API type. Must be one of: {', '.join(valid_api_types)}"
+            )
+        return self
 
 
 class ProxySettings(BaseModel):
@@ -152,8 +163,67 @@ class MCPSettings(BaseModel):
             raise ValueError(f"Failed to load MCP server config: {e}")
 
 
+class GlobalPromptSettings(BaseModel):
+    """全局提示词配置"""
+
+    meta_prompt: str = Field(
+        default="你可以用英文思考，但请尽量用中文与用户交流。",
+        description="元提示词，会添加到所有系统提示词中",
+        min_length=1,
+    )
+    language_preference: str = Field(default="zh_CN", description="首选语言")
+    thinking_language: str = Field(default="en", description="思考语言")
+    response_language: str = Field(default="zh_CN", description="回复语言")
+    global_instructions: List[str] = Field(
+        default_factory=lambda: [
+            "保持专业和友好的语调",
+            "当不确定时，主动询问澄清",
+            "提供结构化和详细的回复",
+        ],
+        description="全局指令列表",
+    )
+
+    @model_validator(mode="after")
+    def validate_languages(self) -> "GlobalPromptSettings":
+        valid_languages = ["en", "zh_CN", "ja", "ko"]
+        if self.language_preference not in valid_languages:
+            raise ValueError(
+                f"Invalid language preference. Must be one of: {', '.join(valid_languages)}"
+            )
+        if self.thinking_language not in valid_languages:
+            raise ValueError(
+                f"Invalid thinking language. Must be one of: {', '.join(valid_languages)}"
+            )
+        if self.response_language not in valid_languages:
+            raise ValueError(
+                f"Invalid response language. Must be one of: {', '.join(valid_languages)}"
+            )
+        return self
+
+
+class DialogueConfig(BaseModel):
+    """对话配置"""
+
+    min_rounds: int = Field(default=5, description="最小对话轮数")
+    max_rounds: int = Field(default=30, description="最大对话轮数")
+    auto_extend: bool = Field(default=True, description="是否自动延长对话")
+    extend_threshold: float = Field(default=0.8, description="触发延长的阈值(0-1)")
+    max_silence_time: int = Field(default=300, description="最大等待时间(秒)")
+
+    @model_validator(mode="after")
+    def validate_rounds(self) -> "DialogueConfig":
+        if self.min_rounds > self.max_rounds:
+            raise ValueError("最小轮数不能大于最大轮数")
+        if not 0 <= self.extend_threshold <= 1:
+            raise ValueError("延长阈值必须在0-1之间")
+        return self
+
+
 class AppConfig(BaseModel):
     llm: Dict[str, LLMSettings]
+    global_prompts: Optional[GlobalPromptSettings] = Field(
+        None, description="全局提示词配置"
+    )
     sandbox: Optional[SandboxSettings] = Field(
         None, description="Sandbox configuration"
     )
@@ -167,6 +237,7 @@ class AppConfig(BaseModel):
     run_flow_config: Optional[RunflowSettings] = Field(
         None, description="Run flow configuration"
     )
+    dialogue: DialogueConfig = Field(default_factory=DialogueConfig)
 
     class Config:
         arbitrary_types_allowed = True
@@ -283,6 +354,15 @@ class Config:
             run_flow_settings = RunflowSettings(**run_flow_config)
         else:
             run_flow_settings = RunflowSettings()
+
+        global_prompts = raw_config.get("global_prompts", {})
+        global_prompts_settings = None
+        if global_prompts:
+            global_prompts_settings = GlobalPromptSettings(**global_prompts)
+
+        dialogue_config = raw_config.get("dialogue", {})
+        dialogue_settings = DialogueConfig(**dialogue_config)
+
         config_dict = {
             "llm": {
                 "default": default_settings,
@@ -291,11 +371,13 @@ class Config:
                     for name, override_config in llm_overrides.items()
                 },
             },
+            "global_prompts": global_prompts_settings,
             "sandbox": sandbox_settings,
             "browser_config": browser_settings,
             "search_config": search_settings,
             "mcp_config": mcp_settings,
             "run_flow_config": run_flow_settings,
+            "dialogue": dialogue_settings,
         }
 
         self._config = AppConfig(**config_dict)
@@ -303,6 +385,11 @@ class Config:
     @property
     def llm(self) -> Dict[str, LLMSettings]:
         return self._config.llm
+
+    @property
+    def global_prompts(self) -> Optional[GlobalPromptSettings]:
+        """Get the global prompts configuration"""
+        return self._config.global_prompts
 
     @property
     def sandbox(self) -> SandboxSettings:
@@ -325,6 +412,11 @@ class Config:
     def run_flow_config(self) -> RunflowSettings:
         """Get the Run Flow configuration"""
         return self._config.run_flow_config
+
+    @property
+    def dialogue(self) -> DialogueConfig:
+        """Get the dialogue configuration"""
+        return self._config.dialogue
 
     @property
     def workspace_root(self) -> Path:

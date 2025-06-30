@@ -1,0 +1,14 @@
+{
+  "name": "frontend-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": ["project-management", "requirements-analyzer"],
+  "scripts": {
+    "setup": "pnpm install",
+    "start:project-management": "pnpm -r start --filter project-management",
+    "start:requirements-analyzer": "pnpm -r start --filter requirements-analyzer",
+    "build": "pnpm -r build"
+  },
+  "devDependencies": {
+  }
+}

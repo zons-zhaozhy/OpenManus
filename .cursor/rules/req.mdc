@@ -1,0 +1,183 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+# OpenManus Requirements Tracking
+
+## Active Requirements
+
+### Core System Requirements
+1. MUST automatically collect and organize all user requirements in this file
+   - Priority: High
+   - Status: Active
+   - Added: June 2025
+   - Source: User direct request
+   - Implementation: Continuous requirement tracking and documentation
+
+### ✅ COMPLETED: System Architecture Optimization (2025-06-30)
+1. **统一架构重构** - COMPLETED
+   - Priority: Critical
+   - Status: Completed
+   - Issue: 避免多个版本导致的逻辑不一致问题
+   - Solution:
+     * 重构main.py作为统一入口点
+     * 支持多种运行模式：--mode cli/web/once
+     * 删除重复的main_interactive.py和run_web_api.py
+     * 保持单一代码逻辑
+
+2. **高仿OpenHands前端界面** - COMPLETED
+   - Priority: High
+   - Status: Completed
+   - Requirements: 用户要求高仿OpenHands的前端交互功能
+   - Implementation:
+     * 现代化React界面，使用Inter字体
+     * 侧边栏导航（需求分析、设置、新对话）
+     * OpenHands风格的聊天界面
+     * 状态指示器（ready/thinking/error）
+     * 设置页面（LLM提供商、模型、API密钥）
+     * WebSocket实时状态更新
+     * 建议问题快速选择
+     * 响应式设计
+
+3. **多模式交互支持** - COMPLETED
+   - CLI模式：python main.py --mode cli
+   - Web模式：python main.py --mode web
+   - 单次模式：python main.py --mode once "需求描述"
+   - 统一使用相同的Agent和配置系统
+
+### System Architecture Requirements
+1. ✅ COMPLETED: Fix Manus system prompt to focus on requirements analysis
+   - Priority: Critical
+   - Status: Completed
+   - Added: June 2025
+   - Source: User feedback on incorrect behavior
+   - Implementation: Modified app/prompt/manus.py to focus on requirements analysis instead of direct implementation
+
+2. ✅ COMPLETED: Implement global prompt configuration system
+   - Priority: High
+   - Status: Completed
+   - Added: June 2025
+   - Source: User request for global prompt management
+   - Implementation:
+     * Added GlobalPromptSettings in app/config.py
+     * Support for meta_prompt, language preferences
+     * Global instructions configuration
+     * Integration with existing LLM configuration
+
+3. ✅ COMPLETED: Create specialized requirements analysis tool
+   - Priority: Medium
+   - Status: Completed
+   - Added: June 2025
+   - Implementation:
+     * RequirementsAnalyzer tool in app/tool/requirements_analyzer.py
+     * Structured requirement collection and analysis
+     * Document generation capabilities
+     * Integration with Manus agent
+
+### Current Interface Implementation
+**统一入口架构 (main.py)**:
+```bash
+# Web GUI模式（默认，类似OpenHands）
+python main.py
+
+# 交互式CLI模式
+python main.py --mode cli
+
+# 单次执行模式
+python main.py --mode once "图书管理系统"
+
+# Web模式自定义端口
+python main.py --mode web --port 8080 --host 127.0.0.1
+```
+
+**界面特性**:
+- 🎨 高仿OpenHands的现代化UI设计
+- 📱 响应式布局，支持移动端
+- 🔧 设置页面，支持LLM配置
+- 📊 实时状态指示器
+- 💬 WebSocket实时通信
+- 🚀 建议问题快速选择
+- 🎯 专注需求分析而非直接编程
+
+## Completed Requirements
+
+### Phase 1 - Requirements Analysis Focus (2025-06-30)
+1. **系统行为修正** ✅
+   - 修改Manus系统提示词，专注需求分析
+   - 避免直接编程实现，改为需求澄清
+
+2. **全局提示词系统** ✅
+   - 实现语言偏好配置（英文思考，中文回复）
+   - 支持元提示词和全局指令
+
+3. **统一架构设计** ✅
+   - 重构为单一入口点
+   - 支持多种交互模式
+   - 避免代码重复和逻辑不一致
+
+4. **高仿OpenHands界面** ✅
+   - 实现现代化React前端
+   - 类似OpenHands的用户体验
+   - 完整的设置页面和状态管理
+
+## Deferred Requirements
+(Currently none)
+
+## Rejected Requirements
+(Currently none)
+
+## Architecture Decision Record
+
+### ADR-001: 统一入口架构 (2025-06-30)
+**Context**: 用户指出多个版本（main.py, main_interactive.py等）导致逻辑不一致，维护困难
+
+**Decision**: 采用单一入口点架构
+- 保留main.py作为唯一入口
+- 通过--mode参数支持不同交互方式
+- 删除重复文件，保持代码一致性
+
+**Consequences**:
+✅ 逻辑一致性得到保证
+✅ 维护成本降低
+✅ 用户体验统一
+
+### ADR-002: 高仿OpenHands界面 (2025-06-30)
+**Context**: 用户要求高仿OpenHands的前端交互功能
+
+**Decision**: 实现现代化React界面，参考OpenHands设计
+- 使用React + 现代CSS
+- 实现侧边栏、状态指示器、设置页面
+- WebSocket实时通信
+- 响应式设计
+
+**Consequences**:
+✅ 用户熟悉的界面体验
+✅ 专业的视觉设计
+✅ 良好的交互反馈
+
+## Requirement Tracking Guidelines
+1. Each requirement MUST have:
+   - Clear description
+   - Priority level
+   - Current status
+   - Addition date
+   - Source/origin
+   - Implementation details
+
+2. Requirements MUST be categorized as:
+   - Active
+   - Completed
+   - Deferred
+   - Rejected
+
+3. Regular requirement reviews MUST:
+   - Validate current status
+   - Update progress
+   - Adjust priorities
+   - Archive completed items
+
+4. Architecture decisions MUST be documented with:
+   - Context and problem statement
+   - Decision and rationale
+   - Consequences and trade-offs

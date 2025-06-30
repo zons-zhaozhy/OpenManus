@@ -1,8 +1,10 @@
 import math
-from typing import Dict, List, Optional, Union
+import os
+from typing import Any, Dict, List, Optional, Union
 
 import tiktoken
 from openai import (
+    APIConnectionError,
     APIError,
     AsyncAzureOpenAI,
     AsyncOpenAI,
@@ -10,7 +12,7 @@ from openai import (
     OpenAIError,
     RateLimitError,
 )
-from openai.types.chat import ChatCompletion, ChatCompletionMessage
+from openai.types.chat import ChatCompletionMessage
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -29,7 +31,6 @@ from app.schema import (
     Message,
     ToolChoice,
 )
-
 
 REASONING_MODELS = ["o1", "o3-mini"]
 MULTIMODAL_MODELS = [
@@ -187,21 +188,36 @@ class LLM:
         self, config_name: str = "default", llm_config: Optional[LLMSettings] = None
     ):
         if not hasattr(self, "client"):  # Only initialize if not already initialized
-            llm_config = llm_config or config.llm
-            llm_config = llm_config.get(config_name, llm_config["default"])
-            self.model = llm_config.model
-            self.max_tokens = llm_config.max_tokens
-            self.temperature = llm_config.temperature
-            self.api_type = llm_config.api_type
-            self.api_key = llm_config.api_key
-            self.api_version = llm_config.api_version
-            self.base_url = llm_config.base_url
+            # Import config here to avoid circular imports
+            from app.config import config
+
+            # Get LLM settings from config if not provided
+            if llm_config is None:
+                if config_name in config.llm:
+                    llm_config = config.llm[config_name]
+                else:
+                    llm_config = config.llm.get("default")
+
+            if llm_config is None:
+                raise ValueError(
+                    f"No LLM configuration found for '{config_name}' and no default configuration available"
+                )
+
+            self.model = getattr(llm_config, "model", "deepseek-chat")
+            self.max_tokens = getattr(llm_config, "max_tokens", 4096)
+            self.temperature = getattr(llm_config, "temperature", 0.1)
+            self.api_type = getattr(llm_config, "api_type", "deepseek")
+            self.api_key = getattr(llm_config, "api_key", "")
+            self.api_version = getattr(llm_config, "api_version", "2025-03-10")
+            self.base_url = getattr(
+                llm_config, "base_url", "https://api.deepseek.com/v1"
+            )
 
             # Add token counting related attributes
             self.total_input_tokens = 0
             self.total_completion_tokens = 0
             self.max_input_tokens = (
-                llm_config.max_input_tokens
+                getattr(llm_config, "max_input_tokens", None)
                 if hasattr(llm_config, "max_input_tokens")
                 else None
             )
@@ -221,8 +237,51 @@ class LLM:
                 )
             elif self.api_type == "aws":
                 self.client = BedrockClient()
+            elif self.api_type == "deepseek":
+                # Ensure API key is correctly formatted for DeepSeek API
+                import ssl
+
+                from httpx import AsyncClient
+
+                # Get API key from environment variable or config
+                api_key_stripped = os.getenv("DEEPSEEK_API_KEY", "").strip()
+                if not api_key_stripped:
+                    # Fallback to config file
+                    api_key_stripped = self.api_key.strip() if self.api_key else ""
+                    if not api_key_stripped:
+                        raise ValueError(
+                            "API key is required for DeepSeek API. Set DEEPSEEK_API_KEY environment variable or configure in config.toml"
+                        )
+
+                try:
+                    # First try with SSL verification
+                    self.client = AsyncOpenAI(
+                        api_key=api_key_stripped,
+                        base_url=self.base_url,
+                        http_client=AsyncClient(verify=True, timeout=30.0),
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to connect with SSL verification: {e}. Retrying without SSL verification..."
+                    )
+                    # Fallback to no SSL verification
+                    self.client = AsyncOpenAI(
+                        api_key=api_key_stripped,
+                        base_url=self.base_url,
+                        http_client=AsyncClient(verify=False, timeout=30.0),
+                    )
+                logger.info(
+                    f"Initialized DeepSeek client with base_url: {self.base_url}"
+                )
+                logger.debug(
+                    f"Using API key: {api_key_stripped[:4]}...{api_key_stripped[-4:] if api_key_stripped else 'None'}"
+                )
             else:
-                self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
+                # Default to OpenAI
+                self.client = AsyncOpenAI(
+                    api_key=self.api_key,
+                    base_url=self.base_url,
+                )
 
             self.token_counter = TokenCounter(self.tokenizer)
 
@@ -312,24 +371,36 @@ class LLM:
                         ]
                     elif isinstance(message["content"], list):
                         # Convert string items to proper text objects
-                        message["content"] = [
-                            (
-                                {"type": "text", "text": item}
-                                if isinstance(item, str)
-                                else item
-                            )
-                            for item in message["content"]
-                        ]
+                        content = message.get("content", [])
+                        if isinstance(content, list):
+                            message["content"] = [
+                                (
+                                    {"type": "text", "text": item}
+                                    if isinstance(item, str)
+                                    else item
+                                )
+                                for item in content
+                            ]
+                        else:
+                            message["content"] = [
+                                {"type": "text", "text": str(content)}
+                            ]
 
                     # Add the image to content
-                    message["content"].append(
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{message['base64_image']}"
-                            },
-                        }
-                    )
+                    image_item = {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{message['base64_image']}"
+                        },
+                    }
+                    current_content = message.get("content", [])
+                    if isinstance(current_content, list):
+                        message["content"] = current_content + [image_item]
+                    else:
+                        message["content"] = [
+                            {"type": "text", "text": str(current_content)},
+                            image_item,
+                        ]
 
                     # Remove the base64_image field
                     del message["base64_image"]
@@ -388,14 +459,20 @@ class LLM:
             supports_images = self.model in MULTIMODAL_MODELS
 
             # Format system and user messages with image support check
-            if system_msgs:
-                system_msgs = self.format_messages(system_msgs, supports_images)
-                messages = system_msgs + self.format_messages(messages, supports_images)
-            else:
-                messages = self.format_messages(messages, supports_images)
+            formatted_system_msgs = (
+                self.format_messages(system_msgs, supports_images)
+                if system_msgs
+                else []
+            )
+            formatted_user_msgs = self.format_messages(messages, supports_images)
+            all_messages = (
+                formatted_system_msgs + formatted_user_msgs
+                if system_msgs
+                else formatted_user_msgs
+            )
 
             # Calculate input token count
-            input_tokens = self.count_message_tokens(messages)
+            input_tokens = self.count_message_tokens(all_messages)
 
             # Check if token limits are exceeded
             if not self.check_token_limit(input_tokens):
@@ -405,7 +482,7 @@ class LLM:
 
             params = {
                 "model": self.model,
-                "messages": messages,
+                "messages": all_messages,
             }
 
             if self.model in REASONING_MODELS:
@@ -418,7 +495,7 @@ class LLM:
 
             if not stream:
                 # Non-streaming request
-                response = await self.client.chat.completions.create(
+                response = await self.client.chat.completions.create(  # type: ignore
                     **params, stream=False
                 )
 
@@ -426,16 +503,20 @@ class LLM:
                     raise ValueError("Empty or invalid response from LLM")
 
                 # Update token counts
-                self.update_token_count(
-                    response.usage.prompt_tokens, response.usage.completion_tokens
-                )
+                if response.usage:
+                    self.update_token_count(
+                        getattr(response.usage, "prompt_tokens", 0),
+                        getattr(response.usage, "completion_tokens", 0),
+                    )
+                else:
+                    self.update_token_count(0, 0)
 
                 return response.choices[0].message.content
 
             # Streaming request, For streaming, update estimated token count before making the request
             self.update_token_count(input_tokens)
 
-            response = await self.client.chat.completions.create(**params, stream=True)
+            response = await self.client.chat.completions.create(**params, stream=True)  # type: ignore
 
             collected_messages = []
             completion_text = ""
@@ -533,27 +614,29 @@ class LLM:
             last_message = formatted_messages[-1]
 
             # Convert content to multimodal format if needed
-            content = last_message["content"]
+            content = last_message.get("content", "")
             multimodal_content = (
                 [{"type": "text", "text": content}]
                 if isinstance(content, str)
-                else content
-                if isinstance(content, list)
-                else []
+                else content if isinstance(content, list) else []
             )
 
             # Add images to content
             for image in images:
+                image_item = None
                 if isinstance(image, str):
-                    multimodal_content.append(
-                        {"type": "image_url", "image_url": {"url": image}}
-                    )
+                    image_item = {"type": "image_url", "image_url": {"url": image}}
                 elif isinstance(image, dict) and "url" in image:
-                    multimodal_content.append({"type": "image_url", "image_url": image})
+                    image_item = {
+                        "type": "image_url",
+                        "image_url": {"url": image["url"]},
+                    }
                 elif isinstance(image, dict) and "image_url" in image:
-                    multimodal_content.append(image)
+                    image_item = {"type": "image_url", "image_url": image["image_url"]}
                 else:
                     raise ValueError(f"Unsupported image format: {image}")
+                if image_item:
+                    multimodal_content.append(image_item)
 
             # Update the message with multimodal content
             last_message["content"] = multimodal_content
@@ -590,17 +673,20 @@ class LLM:
 
             # Handle non-streaming request
             if not stream:
-                response = await self.client.chat.completions.create(**params)
+                response = await self.client.chat.completions.create(**params)  # type: ignore
 
                 if not response.choices or not response.choices[0].message.content:
                     raise ValueError("Empty or invalid response from LLM")
 
-                self.update_token_count(response.usage.prompt_tokens)
+                if response.usage:
+                    self.update_token_count(getattr(response.usage, "prompt_tokens", 0))
+                else:
+                    self.update_token_count(0)
                 return response.choices[0].message.content
 
             # Handle streaming request
             self.update_token_count(input_tokens)
-            response = await self.client.chat.completions.create(**params)
+            response = await self.client.chat.completions.create(**params)  # type: ignore
 
             collected_messages = []
             async for chunk in response:
@@ -622,13 +708,15 @@ class LLM:
             logger.error(f"Validation error in ask_with_images: {ve}")
             raise
         except OpenAIError as oe:
-            logger.error(f"OpenAI API error: {oe}")
+            logger.error(f"OpenAI API error: {str(oe)}")
             if isinstance(oe, AuthenticationError):
                 logger.error("Authentication failed. Check API key.")
             elif isinstance(oe, RateLimitError):
                 logger.error("Rate limit exceeded. Consider increasing retry attempts.")
             elif isinstance(oe, APIError):
-                logger.error(f"API error: {oe}")
+                logger.error(f"API error: {str(oe)}")
+            else:
+                logger.error(f"Unexpected OpenAI error type: {type(oe).__name__}")
             raise
         except Exception as e:
             logger.error(f"Unexpected error in ask_with_images: {e}")
@@ -681,14 +769,20 @@ class LLM:
             supports_images = self.model in MULTIMODAL_MODELS
 
             # Format messages
-            if system_msgs:
-                system_msgs = self.format_messages(system_msgs, supports_images)
-                messages = system_msgs + self.format_messages(messages, supports_images)
-            else:
-                messages = self.format_messages(messages, supports_images)
+            formatted_system_msgs = (
+                self.format_messages(system_msgs, supports_images)
+                if system_msgs
+                else []
+            )
+            formatted_user_msgs = self.format_messages(messages, supports_images)
+            all_messages = (
+                formatted_system_msgs + formatted_user_msgs
+                if system_msgs
+                else formatted_user_msgs
+            )
 
             # Calculate input token count
-            input_tokens = self.count_message_tokens(messages)
+            input_tokens = self.count_message_tokens(all_messages)
 
             # If there are tools, calculate token count for tool descriptions
             tools_tokens = 0
@@ -713,7 +807,7 @@ class LLM:
             # Set up the completion request
             params = {
                 "model": self.model,
-                "messages": messages,
+                "messages": all_messages,
                 "tools": tools,
                 "tool_choice": tool_choice,
                 "timeout": timeout,
@@ -729,7 +823,7 @@ class LLM:
                 )
 
             params["stream"] = False  # Always use non-streaming for tool requests
-            response: ChatCompletion = await self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(  # type: ignore
                 **params
             )
 
@@ -740,9 +834,13 @@ class LLM:
                 return None
 
             # Update token counts
-            self.update_token_count(
-                response.usage.prompt_tokens, response.usage.completion_tokens
-            )
+            if response.usage:
+                self.update_token_count(
+                    getattr(response.usage, "prompt_tokens", 0),
+                    getattr(response.usage, "completion_tokens", 0),
+                )
+            else:
+                self.update_token_count(0, 0)
 
             return response.choices[0].message
 
@@ -753,14 +851,34 @@ class LLM:
             logger.error(f"Validation error in ask_tool: {ve}")
             raise
         except OpenAIError as oe:
-            logger.error(f"OpenAI API error: {oe}")
+            error_msg = f"API error ({self.api_type}): {oe}"
             if isinstance(oe, AuthenticationError):
-                logger.error("Authentication failed. Check API key.")
+                error_msg = f"Authentication failed for {self.api_type} API. Please check your API key."
+                logger.error(error_msg)
+                logger.debug(
+                    f"API Key (first/last 4 chars): {self.api_key[:4]}...{self.api_key[-4:] if self.api_key else 'None'}"
+                )
             elif isinstance(oe, RateLimitError):
-                logger.error("Rate limit exceeded. Consider increasing retry attempts.")
+                error_msg = f"Rate limit exceeded for {self.api_type} API. Consider increasing retry attempts."
+                logger.error(error_msg)
             elif isinstance(oe, APIError):
-                logger.error(f"API error: {oe}")
-            raise
+                error_msg = f"{self.api_type} API error: {oe}"
+                logger.error(error_msg)
+            elif isinstance(oe, APIConnectionError):
+                error_msg = f"Connection error for {self.api_type} API: {oe}. Check network connection and API endpoint."
+                logger.error(error_msg)
+                logger.debug(
+                    f"Connection details - Base URL: {self.base_url}, API Type: {self.api_type}"
+                )
+            else:
+                error_msg = f"Unexpected {self.api_type} API error: {type(oe).__name__}"
+                logger.error(error_msg)
+            raise  # Re-raise the original exception
         except Exception as e:
             logger.error(f"Unexpected error in ask_tool: {e}")
             raise
+
+
+def get_llm(config_name: str = "default") -> LLM:
+    """获取LLM实例"""
+    return LLM(config_name)

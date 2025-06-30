@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenManus - AI需求分析助手</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --color-primary: #2563eb;
+            --color-primary-hover: #1d4ed8;
+            --color-secondary: #64748b;
+            --color-background: #ffffff;
+            --color-surface: #f8fafc;
+            --color-border: #e2e8f0;
+            --color-text: #1e293b;
+            --color-text-secondary: #64748b;
+            --color-success: #10b981;
+            --color-warning: #f59e0b;
+            --color-error: #ef4444;
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+            --radius: 0.5rem;
+        }
+
+        [data-theme="dark"] {
+            --color-background: #0f172a;
+            --color-surface: #1e293b;
+            --color-border: #334155;
+            --color-text: #f1f5f9;
+            --color-text-secondary: #94a3b8;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--color-background);
+            color: var(--color-text);
+            line-height: 1.5;
+            overflow: hidden;
+        }
+
+        .app-container {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* 侧边栏 */
+        .sidebar {
+            width: 280px;
+            background: var(--color-surface);
+            border-right: 1px solid var(--color-border);
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.3s ease;
+        }
+
+        .sidebar-header {
+            padding: 1rem;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .sidebar-content {
+            flex: 1;
+            padding: 1rem;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-bottom: 0.5rem;
+        }
+
+        .nav-item:hover {
+            background: var(--color-primary);
+            color: white;
+        }
+
+        .nav-item.active {
+            background: var(--color-primary);
+            color: white;
+        }
+
+        /* 主内容区 */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 顶部栏 */
+        .top-bar {
+            height: 60px;
+            background: var(--color-surface);
+            border-bottom: 1px solid var(--color-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 1.5rem;
+        }
+
+        .page-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .top-actions {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: var(--color-primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--color-primary-hover);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--color-text-secondary);
+            border: 1px solid var(--color-border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--color-surface);
+        }
+
+        /* 聊天界面 */
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-height: calc(100vh - 60px);
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .message {
+            max-width: 80%;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .message.user {
+            align-self: flex-end;
+        }
+
+        .message.assistant {
+            align-self: flex-start;
+        }
+
+        .message-content {
+            padding: 1rem 1.25rem;
+            border-radius: 1rem;
+            position: relative;
+        }
+
+        .message.user .message-content {
+            background: var(--color-primary);
+            color: white;
+            border-bottom-right-radius: 0.25rem;
+        }
+
+        .message.assistant .message-content {
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-bottom-left-radius: 0.25rem;
+        }
+
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--color-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            font-size: 0.8rem;
+        }
+
+        .message.user .message-avatar {
+            background: var(--color-success);
+            margin-left: auto;
+        }
+
+        /* 建议问题 */
+        .suggestions {
+            margin-top: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .suggestion-item {
+            padding: 0.75rem 1rem;
+            background: var(--color-background);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+        }
+
+        .suggestion-item:hover {
+            border-color: var(--color-primary);
+            background: rgba(37, 99, 235, 0.05);
+        }
+
+        /* 输入区域 */
+        .chat-input-container {
+            padding: 1.5rem;
+            background: var(--color-surface);
+            border-top: 1px solid var(--color-border);
+        }
+
+        .chat-input-wrapper {
+            position: relative;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .chat-input {
+            width: 100%;
+            padding: 1rem 4rem 1rem 1.5rem;
+            border: 1px solid var(--color-border);
+            border-radius: 1.5rem;
+            font-size: 1rem;
+            outline: none;
+            background: var(--color-background);
+            color: var(--color-text);
+            resize: none;
+            min-height: 52px;
+            max-height: 120px;
+        }
+
+        .chat-input:focus {
+            border-color: var(--color-primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        .send-button {
+            position: absolute;
+            right: 0.5rem;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 40px;
+            height: 40px;
+            border: none;
+            border-radius: 50%;
+            background: var(--color-primary);
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .send-button:hover:not(:disabled) {
+            background: var(--color-primary-hover);
+        }
+
+        .send-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* 状态指示器 */
+        .status-bar {
+            position: fixed;
+            bottom: 1rem;
+            left: 1rem;
+            right: 1rem;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius);
+            padding: 0.75rem 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            box-shadow: var(--shadow-lg);
+            z-index: 1000;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.ready {
+            background: var(--color-success);
+        }
+
+        .status-indicator.thinking {
+            background: var(--color-warning);
+        }
+
+        .status-indicator.error {
+            background: var(--color-error);
+        }
+
+        /* 设置模态框 */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+
+        .modal {
+            background: var(--color-background);
+            border-radius: var(--radius);
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow-lg);
+        }
+
+        .modal-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--color-border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .modal-content {
+            padding: 1.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: var(--color-text);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius);
+            font-size: 1rem;
+            background: var(--color-background);
+            color: var(--color-text);
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--color-primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        .form-select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius);
+            font-size: 1rem;
+            background: var(--color-background);
+            color: var(--color-text);
+        }
+
+        /* 动画 */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        /* 加载动画 */
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--color-text-secondary);
+        }
+
+        .typing-dots {
+            display: flex;
+            gap: 0.25rem;
+        }
+
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--color-text-secondary);
+            animation: typingDots 1.4s infinite;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typingDots {
+
+            0%,
+            60%,
+            100% {
+                opacity: 0.3;
+            }
+
+            30% {
+                opacity: 1;
+            }
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed;
+                left: 0;
+                top: 0;
+                height: 100vh;
+                z-index: 1500;
+                transform: translateX(-100%);
+            }
+
+            .sidebar.open {
+                transform: translateX(0);
+            }
+
+            .message {
+                max-width: 95%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // 主应用组件
+        function App() {
+            const [currentPage, setCurrentPage] = useState('chat');
+            const [showSettings, setShowSettings] = useState(false);
+            const [sidebarOpen, setSidebarOpen] = useState(false);
+            const [sessionId, setSessionId] = useState(null);
+            const [messages, setMessages] = useState([]);
+            const [inputValue, setInputValue] = useState('');
+            const [isLoading, setIsLoading] = useState(false);
+            const [status, setStatus] = useState({ status: 'ready', message: '就绪，等待您的输入' });
+            const [suggestions, setSuggestions] = useState([]);
+            const [settings, setSettings] = useState({
+                llmProvider: 'deepseek',
+                apiKey: '',
+                model: 'deepseek-reasoner'
+            });
+
+            const messagesEndRef = useRef(null);
+            const inputRef = useRef(null);
+            const wsRef = useRef(null);
+
+            // 滚动到消息底部
+            const scrollToBottom = () => {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            };
+
+            useEffect(() => {
+                scrollToBottom();
+            }, [messages]);
+
+            // WebSocket连接
+            useEffect(() => {
+                if (sessionId) {
+                    const wsUrl = `ws://localhost:3000/ws/${sessionId}`;
+                    wsRef.current = new WebSocket(wsUrl);
+
+                    wsRef.current.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        if (data.type === 'status') {
+                            setStatus({ status: data.status, message: data.message });
+                        }
+                    };
+
+                    wsRef.current.onerror = (error) => {
+                        console.error('WebSocket error:', error);
+                        setStatus({ status: 'error', message: '连接错误' });
+                    };
+
+                    return () => {
+                        wsRef.current?.close();
+                    };
+                }
+            }, [sessionId]);
+
+            // 发送消息
+            const sendMessage = async (message = inputValue) => {
+                if (!message.trim() || isLoading) return;
+
+                const userMessage = { role: 'user', content: message };
+                setMessages(prev => [...prev, userMessage]);
+                setInputValue('');
+                setIsLoading(true);
+                setSuggestions([]);
+
+                // 添加打字指示器
+                const typingMessage = { role: 'assistant', content: '', isTyping: true };
+                setMessages(prev => [...prev, typingMessage]);
+
+                try {
+                    const response = await fetch('/api/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            message,
+                            session_id: sessionId
+                        })
+                    });
+
+                    if (!response.ok) throw new Error('请求失败');
+
+                    const data = await response.json();
+
+                    setSessionId(data.session_id);
+
+                    // 移除打字指示器，添加实际回复
+                    setMessages(prev => {
+                        const newMessages = prev.slice(0, -1); // 移除打字指示器
+                        return [...newMessages, { role: 'assistant', content: data.response }];
+                    });
+
+                    setSuggestions(data.suggestions || []);
+
+                } catch (error) {
+                    console.error('发送消息失败:', error);
+                    setMessages(prev => prev.slice(0, -1)); // 移除打字指示器
+                    setStatus({ status: 'error', message: '发送失败，请重试' });
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            // 处理键盘事件
+            const handleKeyPress = (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            };
+
+            // 选择建议
+            const selectSuggestion = (suggestion) => {
+                sendMessage(suggestion);
+            };
+
+            // 新对话
+            const startNewChat = () => {
+                setMessages([]);
+                setSessionId(null);
+                setSuggestions([]);
+                setStatus({ status: 'ready', message: '就绪，等待您的输入' });
+            };
+
+            return (
+                <div className="app-container">
+                    {/* 侧边栏 */}
+                    <div className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+                        <div className="sidebar-header">
+                            <div className="logo">
+                                <i className="fas fa-robot"></i>
+                                OpenManus
+                            </div>
+                        </div>
+                        <div className="sidebar-content">
+                            <div
+                                className={`nav-item ${currentPage === 'chat' ? 'active' : ''}`}
+                                onClick={() => setCurrentPage('chat')}
+                            >
+                                <i className="fas fa-comments"></i>
+                                需求分析
+                            </div>
+                            <div
+                                className="nav-item"
+                                onClick={() => setShowSettings(true)}
+                            >
+                                <i className="fas fa-cog"></i>
+                                设置
+                            </div>
+                            <div
+                                className="nav-item"
+                                onClick={startNewChat}
+                            >
+                                <i className="fas fa-plus"></i>
+                                新对话
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 主内容 */}
+                    <div className="main-content">
+                        {/* 顶部栏 */}
+                        <div className="top-bar">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => setSidebarOpen(!sidebarOpen)}
+                                    style={{ display: 'none' }}
+                                >
+                                    <i className="fas fa-bars"></i>
+                                </button>
+                                <div className="page-title">需求分析助手</div>
+                            </div>
+                            <div className="top-actions">
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => setShowSettings(true)}
+                                >
+                                    <i className="fas fa-cog"></i>
+                                    设置
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* 聊天区域 */}
+                        <div className="chat-container">
+                            <div className="chat-messages">
+                                {messages.length === 0 && (
+                                    <div style={{
+                                        textAlign: 'center',
+                                        padding: '3rem',
+                                        color: 'var(--color-text-secondary)'
+                                    }}>
+                                        <i className="fas fa-robot" style={{ fontSize: '3rem', marginBottom: '1rem' }}></i>
+                                        <h2>欢迎使用 OpenManus</h2>
+                                        <p>我是您的AI需求分析助手，请描述您的项目想法</p>
+                                    </div>
+                                )}
+
+                                {messages.map((message, index) => (
+                                    <div key={index} className={`message ${message.role}`}>
+                                        <div className="message-avatar">
+                                            {message.role === 'user' ? '您' : 'AI'}
+                                        </div>
+                                        <div className="message-content">
+                                            {message.isTyping ? (
+                                                <div className="typing-indicator">
+                                                    <span>正在思考</span>
+                                                    <div className="typing-dots">
+                                                        <div className="typing-dot"></div>
+                                                        <div className="typing-dot"></div>
+                                                        <div className="typing-dot"></div>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div dangerouslySetInnerHTML={{
+                                                    __html: message.content.replace(/\n/g, '<br>')
+                                                }} />
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {suggestions.length > 0 && (
+                                    <div className="suggestions">
+                                        <div style={{
+                                            fontSize: '0.9rem',
+                                            color: 'var(--color-text-secondary)',
+                                            marginBottom: '0.5rem'
+                                        }}>
+                                            💡 快速回答：
+                                        </div>
+                                        {suggestions.map((suggestion, index) => (
+                                            <div
+                                                key={index}
+                                                className="suggestion-item"
+                                                onClick={() => selectSuggestion(suggestion)}
+                                            >
+                                                {suggestion}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                <div ref={messagesEndRef} />
+                            </div>
+
+                            {/* 输入区域 */}
+                            <div className="chat-input-container">
+                                <div className="chat-input-wrapper">
+                                    <textarea
+                                        ref={inputRef}
+                                        className="chat-input"
+                                        placeholder="描述您的项目需求..."
+                                        value={inputValue}
+                                        onChange={(e) => setInputValue(e.target.value)}
+                                        onKeyPress={handleKeyPress}
+                                        disabled={isLoading}
+                                        rows={1}
+                                    />
+                                    <button
+                                        className="send-button"
+                                        onClick={() => sendMessage()}
+                                        disabled={isLoading || !inputValue.trim()}
+                                    >
+                                        <i className="fas fa-paper-plane"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 状态栏 */}
+                    <div className="status-bar">
+                        <div className={`status-indicator ${status.status}`}></div>
+                        <span>{status.message}</span>
+                    </div>
+
+                    {/* 设置模态框 */}
+                    {showSettings && (
+                        <div className="modal-overlay" onClick={() => setShowSettings(false)}>
+                            <div className="modal" onClick={(e) => e.stopPropagation()}>
+                                <div className="modal-header">
+                                    <h2>设置</h2>
+                                    <button
+                                        className="btn btn-secondary"
+                                        onClick={() => setShowSettings(false)}
+                                    >
+                                        <i className="fas fa-times"></i>
+                                    </button>
+                                </div>
+                                <div className="modal-content">
+                                    <div className="form-group">
+                                        <label className="form-label">LLM 提供商</label>
+                                        <select
+                                            className="form-select"
+                                            value={settings.llmProvider}
+                                            onChange={(e) => setSettings({ ...settings, llmProvider: e.target.value })}
+                                        >
+                                            <option value="deepseek">DeepSeek</option>
+                                            <option value="openai">OpenAI</option>
+                                            <option value="claude">Claude</option>
+                                        </select>
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label">模型</label>
+                                        <input
+                                            type="text"
+                                            className="form-input"
+                                            value={settings.model}
+                                            onChange={(e) => setSettings({ ...settings, model: e.target.value })}
+                                            placeholder="模型名称"
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label">API Key</label>
+                                        <input
+                                            type="password"
+                                            className="form-input"
+                                            value={settings.apiKey}
+                                            onChange={(e) => setSettings({ ...settings, apiKey: e.target.value })}
+                                            placeholder="输入您的API密钥"
+                                        />
+                                    </div>
+                                    <button
+                                        className="btn btn-primary"
+                                        onClick={() => setShowSettings(false)}
+                                        style={{ width: '100%' }}
+                                    >
+                                        保存设置
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // 渲染应用
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+
+</html>

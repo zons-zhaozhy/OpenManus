@@ -1,0 +1,108 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# OpenManus Global Mission and Objectives
+
+## Ultimate Vision
+To create an AI-powered system built on OpenManus that can simulate and replace traditional software company functions, delivering production-grade software systems through automated requirements analysis, design, development, testing, and deployment processes.
+
+## Project Phases
+
+### Current Phase: Phase 1 - Requirements Analysis Assistant
+STATUS: In Progress
+FOCUS: Development of an intelligent requirements analysis system
+
+#### Phase 1 Success Criteria
+1. Requirements Capture
+   - MUST accurately extract requirements from user input
+   - MUST maintain requirement consistency
+   - MUST detect requirement conflicts
+   - MUST suggest requirement refinements
+
+2. Requirements Analysis
+   - MUST perform feasibility analysis
+   - MUST identify technical constraints
+   - MUST estimate implementation complexity
+   - MUST suggest architectural approaches
+
+3. Requirements Documentation
+   - MUST generate structured requirement documents
+   - MUST maintain requirement traceability
+   - MUST support version control
+   - MUST enable collaborative review
+
+4. Quality Metrics
+   - MUST achieve >95% requirement clarity
+   - MUST maintain <2% requirement conflicts
+   - MUST complete analysis within defined timeframes
+   - MUST generate actionable technical specifications
+
+### Future Phases (Planned)
+
+#### Phase 2: Design Assistant
+- System architecture design
+- Component specification
+- Interface definition
+- Technology stack selection
+
+#### Phase 3: Development Assistant
+- Code generation
+- Test case creation
+- Code review
+- Performance optimization
+
+#### Phase 4: Testing Assistant
+- Test strategy development
+- Automated testing
+- Bug detection and analysis
+- Quality assurance
+
+#### Phase 5: Deployment Assistant
+- Deployment planning
+- Infrastructure setup
+- Configuration management
+- Monitoring and maintenance
+
+## Integration Guidelines
+
+### OpenManus Compatibility
+- PRESERVE OpenManus core functionality
+- MAINTAIN upgrade compatibility
+- FOLLOW OpenManus architecture
+- REUSE existing components
+
+### Extension Points
+- IDENTIFY clear integration boundaries
+- IMPLEMENT clean interfaces
+- DOCUMENT extension mechanisms
+- PROVIDE migration paths
+
+## Success Metrics
+
+### Technical Excellence
+- Code quality scores >90%
+- Test coverage >80%
+- Documentation completeness >95%
+- Performance within SLA
+
+### Business Value
+- Reduced development time by 50%
+- Improved requirement accuracy by 75%
+- Decreased defect rate by 60%
+- Enhanced maintainability by 40%
+
+## Constraints and Boundaries
+
+### Technical Constraints
+- MUST use OpenManus approved technologies
+- MUST maintain backward compatibility
+- MUST support scalability
+- MUST ensure security compliance
+
+### Operational Constraints
+- MUST operate within resource limits
+- MUST support multiple concurrent users
+- MUST maintain data privacy
+- MUST enable audit tracking

@@ -1,196 +1,218 @@
-<p align="center">
-  <img src="assets/logo.jpg" width="200"/>
-</p>
+# OpenManus - AI需求分析助手
 
-English | [中文](README_zh.md) | [한국어](README_ko.md) | [日本語](README_ja.md)
+> 🎯 **专注需求分析，而非直接编程实现**
+> 高仿OpenHands界面，提供专业的需求澄清和分析服务
 
-[![GitHub stars](https://img.shields.io/github/stars/FoundationAgents/OpenManus?style=social)](https://github.com/FoundationAgents/OpenManus/stargazers)
-&ensp;
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) &ensp;
-[![Discord Follow](https://dcbadge.vercel.app/api/server/DYn29wFk9z?style=flat)](https://discord.gg/DYn29wFk9z)
-[![Demo](https://img.shields.io/badge/Demo-Hugging%20Face-yellow)](https://huggingface.co/spaces/lyh-917/OpenManusDemo)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15186407.svg)](https://doi.org/10.5281/zenodo.15186407)
+## ✨ 特性
 
-# 👋 OpenManus
+- 🎨 **高仿OpenHands界面** - 现代化React前端，熟悉的用户体验
+- 🔄 **多模式交互** - Web GUI / 交互式CLI / 单次执行
+- 🤖 **智能需求分析** - 深度澄清，结构化文档生成
+- 🌏 **中文友好** - 英文思考，中文交流
+- 📊 **实时状态** - WebSocket通信，状态实时更新
+- ⚙️ **灵活配置** - 支持多种LLM提供商
 
-Manus is incredible, but OpenManus can achieve any idea without an *Invite Code* 🛫!
+## 🚀 快速开始
 
-Our team members [@Xinbin Liang](https://github.com/mannaandpoem) and [@Jinyu Xiang](https://github.com/XiangJinyu) (core authors), along with [@Zhaoyang Yu](https://github.com/MoshiQAQ), [@Jiayi Zhang](https://github.com/didiforgithub), and [@Sirui Hong](https://github.com/stellaHSR), we are from [@MetaGPT](https://github.com/geekan/MetaGPT). The prototype is launched within 3 hours and we are keeping building!
-
-It's a simple implementation, so we welcome any suggestions, contributions, and feedback!
-
-Enjoy your own agent with OpenManus!
-
-We're also excited to introduce [OpenManus-RL](https://github.com/OpenManus/OpenManus-RL), an open-source project dedicated to reinforcement learning (RL)- based (such as GRPO) tuning methods for LLM agents, developed collaboratively by researchers from UIUC and OpenManus.
-
-## Project Demo
-
-<video src="https://private-user-images.githubusercontent.com/61239030/420168772-6dcfd0d2-9142-45d9-b74e-d10aa75073c6.mp4?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDEzMTgwNTksIm5iZiI6MTc0MTMxNzc1OSwicGF0aCI6Ii82MTIzOTAzMC80MjAxNjg3NzItNmRjZmQwZDItOTE0Mi00NWQ5LWI3NGUtZDEwYWE3NTA3M2M2Lm1wND9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTAzMDclMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUwMzA3VDAzMjIzOVomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTdiZjFkNjlmYWNjMmEzOTliM2Y3M2VlYjgyNDRlZDJmOWE3NWZhZjE1MzhiZWY4YmQ3NjdkNTYwYTU5ZDA2MzYmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.UuHQCgWYkh0OQq9qsUWqGsUbhG3i9jcZDAMeHjLt5T4" data-canonical-src="https://private-user-images.githubusercontent.com/61239030/420168772-6dcfd0d2-9142-45d9-b74e-d10aa75073c6.mp4?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDEzMTgwNTksIm5iZiI6MTc0MTMxNzc1OSwicGF0aCI6Ii82MTIzOTAzMC80MjAxNjg3NzItNmRjZmQwZDItOTE0Mi00NWQ5LWI3NGUtZDEwYWE3NTA3M2M2Lm1wND9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPUFLSUFWQ09EWUxTQTUzUFFLNFpBJTJGMjAyNTAzMDclMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjUwMzA3VDAzMjIzOVomWC1BbXotRXhwaXJlcz0zMDAmWC1BbXotU2lnbmF0dXJlPTdiZjFkNjlmYWNjMmEzOTliM2Y3M2VlYjgyNDRlZDJmOWE3NWZhZjE1MzhiZWY4YmQ3NjdkNTYwYTU5ZDA2MzYmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0In0.UuHQCgWYkh0OQq9qsUWqGsUbhG3i9jcZDAMeHjLt5T4" controls="controls" muted="muted" class="d-block rounded-bottom-2 border-top width-fit" style="max-height:640px; min-height: 200px"></video>
-
-## Installation
-
-We provide two installation methods. Method 2 (using uv) is recommended for faster installation and better dependency management.
-
-### Method 1: Using conda
-
-1. Create a new conda environment:
-
-```bash
-conda create -n open_manus python=3.12
-conda activate open_manus
-```
-
-2. Clone the repository:
-
-```bash
-git clone https://github.com/FoundationAgents/OpenManus.git
-cd OpenManus
-```
-
-3. Install dependencies:
-
+### 安装依赖
 ```bash
 pip install -r requirements.txt
 ```
 
-### Method 2: Using uv (Recommended)
-
-1. Install uv (A fast Python package installer and resolver):
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-2. Clone the repository:
-
-```bash
-git clone https://github.com/FoundationAgents/OpenManus.git
-cd OpenManus
-```
-
-3. Create a new virtual environment and activate it:
-
-```bash
-uv venv --python 3.12
-source .venv/bin/activate  # On Unix/macOS
-# Or on Windows:
-# .venv\Scripts\activate
-```
-
-4. Install dependencies:
-
-```bash
-uv pip install -r requirements.txt
-```
-
-### Browser Automation Tool (Optional)
-```bash
-playwright install
-```
-
-## Configuration
-
-OpenManus requires configuration for the LLM APIs it uses. Follow these steps to set up your configuration:
-
-1. Create a `config.toml` file in the `config` directory (you can copy from the example):
-
-```bash
-cp config/config.example.toml config/config.toml
-```
-
-2. Edit `config/config.toml` to add your API keys and customize settings:
-
+### 配置API密钥
+编辑 `config/config.toml`：
 ```toml
-# Global LLM configuration
 [llm]
-model = "gpt-4o"
-base_url = "https://api.openai.com/v1"
-api_key = "sk-..."  # Replace with your actual API key
-max_tokens = 4096
-temperature = 0.0
-
-# Optional configuration for specific LLM models
-[llm.vision]
-model = "gpt-4o"
-base_url = "https://api.openai.com/v1"
-api_key = "sk-..."  # Replace with your actual API key
+api_key = "your-deepseek-api-key"
+model = "deepseek-reasoner"
 ```
 
-## Quick Start
+### 启动应用
 
-One line for run OpenManus:
-
+#### 🖥️ Web界面模式（推荐）
 ```bash
 python main.py
 ```
+访问：http://localhost:3000
 
-Then input your idea via terminal!
-
-For MCP tool version, you can run:
+#### 💻 交互式CLI模式
 ```bash
-python run_mcp.py
+python main.py --mode cli
 ```
 
-For unstable multi-agent version, you also can run:
-
+#### ⚡ 单次执行模式
 ```bash
-python run_flow.py
+python main.py --mode once "我想要一个图书管理系统"
 ```
 
-### Custom Adding Multiple Agents
+## 🎯 使用方式
 
-Currently, besides the general OpenManus Agent, we have also integrated the DataAnalysis Agent, which is suitable for data analysis and data visualization tasks. You can add this agent to `run_flow` in `config.toml`.
+### Web界面使用
+1. 打开浏览器访问 http://localhost:3000
+2. 在设置页面配置LLM提供商和API密钥
+3. 描述您的项目想法
+4. 回答系统的澄清问题
+5. 获得结构化需求文档
 
+### CLI使用
+```bash
+$ python main.py --mode cli
+
+🎯 OpenManus 需求分析助手 - CLI模式
+========================================================
+我将帮助您进行软件需求的深度分析和澄清。
+
+📋 可用命令：
+  /help     - 查看帮助信息
+  /summary  - 显示对话总结
+  /document - 生成需求文档
+  /new      - 开始新对话
+  /exit     - 退出程序
+
+💬 请输入: 我想要一个图书管理系统
+
+🤔 分析中...
+
+🎯 需求分析助手:
+感谢您提出图书管理系统的需求！为了更好地理解您的具体需求，我需要了解一些细节：
+
+1. 请问这是为个人使用、学校图书馆还是公司内部文档管理？
+2. 预计需要管理多少册图书？
+3. 需要支持多少名用户同时使用？
+4. 是否需要借阅和归还功能？
+5. 对移动端支持有什么要求？
+```
+
+## 🏗️ 架构设计
+
+### 统一入口架构
+- **单一入口点** - `main.py` 支持多种运行模式
+- **模式切换** - 通过 `--mode` 参数选择交互方式
+- **逻辑一致** - 所有模式使用相同的Agent和配置
+
+### 组件结构
+```
+OpenManus/
+├── main.py                    # 统一入口点
+├── app/
+│   ├── agent/manus.py        # 核心Agent
+│   ├── interfaces/           # 界面接口
+│   │   ├── cli_interface.py  # CLI交互
+│   │   └── web_interface.py  # Web服务
+│   ├── tool/
+│   │   └── requirements_analyzer.py  # 需求分析工具
+│   └── prompt/manus.py       # 系统提示词
+├── frontend/
+│   └── index.html           # React前端界面
+└── config/
+    └── config.toml          # 配置文件
+```
+
+## ⚙️ 配置选项
+
+### 全局提示词配置
 ```toml
-# Optional configuration for run-flow
-[runflow]
-use_data_analysis_agent = true     # Disabled by default, change to true to activate
+[global_prompts]
+meta_prompt = "你可以用英文思考，但请尽量用中文与用户交流。"
+language_preference = "zh_CN"
+thinking_language = "en"
+response_language = "zh_CN"
+global_instructions = [
+    "保持专业和友好的语调",
+    "当不确定时，主动询问澄清",
+    "专注于当前阶段的核心目标：需求分析"
+]
 ```
-In addition, you need to install the relevant dependencies to ensure the agent runs properly: [Detailed Installation Guide](app/tool/chart_visualization/README.md##Installation)
 
-## How to contribute
-
-We welcome any friendly suggestions and helpful contributions! Just create issues or submit pull requests.
-
-Or contact @mannaandpoem via 📧email: mannaandpoem@gmail.com
-
-**Note**: Before submitting a pull request, please use the pre-commit tool to check your changes. Run `pre-commit run --all-files` to execute the checks.
-
-## Community Group
-Join our networking group on Feishu and share your experience with other developers!
-
-<div align="center" style="display: flex; gap: 20px;">
-    <img src="assets/community_group.jpg" alt="OpenManus 交流群" width="300" />
-</div>
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=FoundationAgents/OpenManus&type=Date)](https://star-history.com/#FoundationAgents/OpenManus&Date)
-
-## Sponsors
-Thanks to [PPIO](https://ppinfra.com/user/register?invited_by=OCPKCN&utm_source=github_openmanus&utm_medium=github_readme&utm_campaign=link) for computing source support.
-> PPIO: The most affordable and easily-integrated MaaS and GPU cloud solution.
-
-
-## Acknowledgement
-
-Thanks to [anthropic-computer-use](https://github.com/anthropics/anthropic-quickstarts/tree/main/computer-use-demo)
-and [browser-use](https://github.com/browser-use/browser-use) for providing basic support for this project!
-
-Additionally, we are grateful to [AAAJ](https://github.com/metauto-ai/agent-as-a-judge), [MetaGPT](https://github.com/geekan/MetaGPT), [OpenHands](https://github.com/All-Hands-AI/OpenHands) and [SWE-agent](https://github.com/SWE-agent/SWE-agent).
-
-We also thank stepfun(阶跃星辰) for supporting our Hugging Face demo space.
-
-OpenManus is built by contributors from MetaGPT. Huge thanks to this agent community!
-
-## Cite
-```bibtex
-@misc{openmanus2025,
-  author = {Xinbin Liang and Jinyu Xiang and Zhaoyang Yu and Jiayi Zhang and Sirui Hong and Sheng Fan and Xiao Tang},
-  title = {OpenManus: An open-source framework for building general AI agents},
-  year = {2025},
-  publisher = {Zenodo},
-  doi = {10.5281/zenodo.15186407},
-  url = {https://doi.org/10.5281/zenodo.15186407},
-}
+### LLM配置
+```toml
+[llm]
+api_type = "deepseek"
+model = "deepseek-reasoner"
+base_url = "https://api.deepseek.com/v1/"
+api_key = "your-api-key"
+max_tokens = 8192
+temperature = 0.0
 ```
+
+## 🎨 界面特性
+
+### Web界面
+- ✅ 类似OpenHands的现代化设计
+- ✅ 侧边栏导航（需求分析、设置、新对话）
+- ✅ 实时状态指示器
+- ✅ 建议问题快速选择
+- ✅ 响应式设计，支持移动端
+- ✅ 设置页面，支持LLM配置
+
+### 状态指示
+- 🟢 **就绪** - 等待用户输入
+- 🟡 **思考中** - 正在分析需求
+- 🔴 **错误** - 处理出现问题
+
+## 📋 命令参考
+
+### 主命令
+```bash
+python main.py [options] [prompt]
+
+选项:
+  --mode {cli,web,once}    运行模式（默认: web）
+  --host HOST             Web模式主机地址（默认: 0.0.0.0）
+  --port PORT             Web模式端口号（默认: 3000）
+  --verbose               显示详细日志
+  -h, --help              显示帮助信息
+
+示例:
+  python main.py                                    # Web GUI模式
+  python main.py --mode cli                         # 交互式CLI
+  python main.py --mode once "电商系统需求"          # 单次执行
+  python main.py --mode web --port 8080             # 自定义端口
+```
+
+### CLI命令
+- `/help` - 查看帮助信息
+- `/summary` - 显示对话总结
+- `/document` - 生成需求文档
+- `/new` - 开始新对话
+- `/exit` - 退出程序
+
+## 🔧 开发
+
+### 环境要求
+- Python 3.11-3.13
+- 有效的DeepSeek API密钥
+- 现代浏览器（Web模式）
+
+### 开发模式
+```bash
+# 启动开发服务器（自动重载）
+python main.py --mode web --verbose
+
+# 运行CLI进行调试
+python main.py --mode cli --verbose
+```
+
+## 🤝 贡献
+
+欢迎提交Issue和Pull Request！
+
+## 📄 许可证
+
+MIT License
+
+---
+
+## 🆚 与OpenHands的区别
+
+| 特性     | OpenHands       | OpenManus        |
+| -------- | --------------- | ---------------- |
+| 主要用途 | 代码生成和编程  | 需求分析和澄清   |
+| 交互重点 | 直接实现        | 深度分析         |
+| 输出结果 | 可运行代码      | 结构化需求文档   |
+| 适用阶段 | 开发阶段        | 需求分析阶段     |
+| 界面风格 | ✅ 高仿OpenHands | ✅ 现代化专业设计 |
+
+---
+
+🎯 **OpenManus专注于项目前期的需求分析阶段，帮助您充分理解和完善需求，为后续开发奠定坚实基础。**
